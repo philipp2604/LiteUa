@@ -7,16 +7,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="BuiltIn\" />
     <Folder Include="Client\Pooling\" />
     <Folder Include="Common\" />
     <Folder Include="Security\" />
-    <Folder Include="Stack\Attribute\" />
     <Folder Include="Stack\MonitoredItem\" />
     <Folder Include="Stack\Discovery\" />
+    <Folder Include="Stack\Session\" />
     <Folder Include="Stack\View\" />
     <Folder Include="Stack\Subscription\" />
-    <Folder Include="Stack\Session\" />
     <Folder Include="Stack\SecureChannel\" />
     <Folder Include="Transport\TcpMessages\" />
   </ItemGroup>

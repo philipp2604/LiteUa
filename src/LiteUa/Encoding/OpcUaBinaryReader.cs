@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 /// TODO: Fix documentation comments
+/// TODO: Add unit tests
 
 namespace LiteUa.Encoding
 {
