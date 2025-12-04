@@ -9,7 +9,6 @@
   <ItemGroup>
     <Folder Include="Client\Pooling\" />
     <Folder Include="Common\" />
-    <Folder Include="Security\" />
     <Folder Include="Stack\MonitoredItem\" />
     <Folder Include="Stack\Discovery\" />
     <Folder Include="Stack\Session\" />
