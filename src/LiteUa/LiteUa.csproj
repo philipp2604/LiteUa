@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="BuiltIn\" />
+    <Folder Include="Client\Pooling\" />
+    <Folder Include="Common\" />
+    <Folder Include="Security\" />
+    <Folder Include="Stack\Attribute\" />
+    <Folder Include="Stack\MonitoredItem\" />
+    <Folder Include="Stack\Discovery\" />
+    <Folder Include="Stack\View\" />
+    <Folder Include="Stack\Subscription\" />
+    <Folder Include="Stack\Session\" />
+    <Folder Include="Stack\SecureChannel\" />
+    <Folder Include="Transport\TcpMessages\" />
+  </ItemGroup>
+
+</Project>
