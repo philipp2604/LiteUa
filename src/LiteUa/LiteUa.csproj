@@ -10,7 +10,6 @@
     <Folder Include="Client\Pooling\" />
     <Folder Include="Common\" />
     <Folder Include="Stack\MonitoredItem\" />
-    <Folder Include="Stack\View\" />
     <Folder Include="Stack\Subscription\" />
   </ItemGroup>
 
