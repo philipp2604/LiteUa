@@ -1,0 +1,18 @@
+﻿using LiteUa.BuiltIn;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace LiteUa.Stack.Method
+{
+    /// TODO: fix documentation comments
+
+    [AttributeUsage(AttributeTargets.Property)]
+    public class OpcMethodParameterAttribute(int order, BuiltInType type) : System.Attribute
+    {
+        public int Order { get; } = order;
+        public BuiltInType Type { get; } = type;
+    }
+}
