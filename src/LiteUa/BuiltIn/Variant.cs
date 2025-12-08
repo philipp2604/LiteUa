@@ -5,10 +5,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-/// TODO: Add unit tests
-
 namespace LiteUa.BuiltIn
 {
+    /// TODO: Add unit tests
+
     /// <summary>
     ///  Represents a Variant in OPC UA, which can hold a value of any built-in type, including arrays and multi-dimensional arrays.
     /// </summary>

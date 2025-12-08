@@ -5,12 +5,12 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-/// TODO: Fix documentation comments
-/// TODO: Add unit tests
-/// TODI: Add ToString() method
-
 namespace LiteUa.BuiltIn
 {
+    /// TODO: Fix documentation comments
+    /// TODO: Add unit tests
+    /// TODI: Add ToString() method
+
     public class NodeId
     {
         private enum NodeIdEncoding : byte

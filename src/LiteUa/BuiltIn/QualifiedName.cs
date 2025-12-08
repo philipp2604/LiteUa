@@ -5,11 +5,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-
-/// TODO: Add unit tests
-
 namespace LiteUa.BuiltIn
 {
+    /// TODO: Add unit tests
+
     /// <summary>
     /// Represents a QualifiedName in OPC UA, consisting of a NamespaceIndex and a Name.
     /// </summary>

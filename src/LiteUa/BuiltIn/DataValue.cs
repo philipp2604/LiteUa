@@ -5,11 +5,12 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-/// TODO: Add unit tests
-/// TODI: Add ToString() method
-
 namespace LiteUa.BuiltIn
 {
+
+    /// TODO: Add unit tests
+    /// TODI: Add ToString() method
+    
     /// <summary>
     /// Represents a DataValue in OPC UA, which includes a value, status code, and timestamps.
     /// </summary>

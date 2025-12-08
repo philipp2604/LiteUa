@@ -5,10 +5,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-/// TODO: Add unit tests
-
 namespace LiteUa.BuiltIn
 {
+    /// TODO: Add unit tests
+
     /// <summary>
     /// Represents an ExpandedNodeId in OPC UA, which includes a NodeId, an optional NamespaceUri, and a ServerIndex.
     /// </summary>
