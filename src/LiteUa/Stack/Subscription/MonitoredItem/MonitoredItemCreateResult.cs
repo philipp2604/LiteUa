@@ -1,0 +1,35 @@
+﻿using LiteUa.BuiltIn;
+using LiteUa.Encoding;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace LiteUa.Stack.Subscription.MonitoredItem
+{
+    /// TODO: Add unit tests
+    /// TODO: fix documentation comments
+    /// TODO: Add ToString() method
+
+    public class MonitoredItemCreateResult
+    {
+        public StatusCode StatusCode { get; set; }
+        public uint MonitoredItemId { get; set; }
+        public double RevisedSamplingInterval { get; set; }
+        public uint RevisedQueueSize { get; set; }
+        public ExtensionObject? FilterResult { get; set; }
+
+        public static MonitoredItemCreateResult Decode(OpcUaBinaryReader reader)
+        {
+            return new MonitoredItemCreateResult
+            {
+                StatusCode = StatusCode.Decode(reader),
+                MonitoredItemId = reader.ReadUInt32(),
+                RevisedSamplingInterval = reader.ReadDouble(),
+                RevisedQueueSize = reader.ReadUInt32(),
+                FilterResult = ExtensionObject.Decode(reader)
+            };
+        }
+    }
+}
