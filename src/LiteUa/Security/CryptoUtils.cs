@@ -22,8 +22,8 @@ namespace LiteUa.Security
         /// <param name="requiredLength">Required length in Bytes</param>
         public static byte[] PSha256(byte[] secret, byte[] seed, int requiredLength)
         {
-            if (secret == null) throw new ArgumentNullException(nameof(secret));
-            if (seed == null) throw new ArgumentNullException(nameof(seed));
+            ArgumentNullException.ThrowIfNull(secret);
+            ArgumentNullException.ThrowIfNull(seed);
 
             byte[] output = new byte[requiredLength];
             int outputOffset = 0;

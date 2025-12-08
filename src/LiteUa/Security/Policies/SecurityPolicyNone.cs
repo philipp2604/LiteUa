@@ -22,14 +22,14 @@ namespace LiteUa.Security.Policies
         public int SymmetricKeySize => 0;
         public int SymmetricInitializationVectorSize => 0;
 
-        public byte[] Sign(byte[] dataToSign) => Array.Empty<byte>();
+        public byte[] Sign(byte[] dataToSign) => [];
         public bool Verify(byte[] dataToVerify, byte[] signature) => true;
         public byte[] EncryptAsymmetric(byte[] dataToEncrypt) => dataToEncrypt;
         public byte[] DecryptAsymmetric(byte[] dataToDecrypt) => dataToDecrypt;
 
         public void DeriveKeys(byte[] clientNonce, byte[] serverNonce) {}
 
-        public byte[] SignSymmetric(byte[] dataToSign) => Array.Empty<byte>();
+        public byte[] SignSymmetric(byte[] dataToSign) => [];
         public bool VerifySymmetric(byte[] dataToVerify, byte[] signature) => true;
         public byte[] EncryptSymmetric(byte[] dataToEncrypt) => dataToEncrypt;
         public byte[] DecryptSymmetric(byte[] dataToDecrypt) => dataToDecrypt;

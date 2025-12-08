@@ -70,10 +70,6 @@ namespace LiteUa.Security.Policies
 
         public byte[] EncryptAsymmetric(byte[] dataToEncrypt)
         {
-            // Basic256Sha256 benutzt RSA-OAEP-SHA1 für Verschlüsselung.
-            // RSA kann maximal (KeySize - Overhead) auf einmal verschlüsseln.
-            // OPC UA Spec verlangt, dass wir den Plaintext in Blöcke zerteilen.
-
             // Basic256Sha256 uses RSA-OAEP-SHA1 for encryption.
             // RSA can encrypt a maximum of (KeySize - Overhead) at once.
             // We need to split the plaintext into blocks as per OPC UA Spec.
@@ -180,68 +176,56 @@ namespace LiteUa.Security.Policies
         {
             if (_sendingKeys == null) throw new InvalidOperationException("Keys not derived yet.");
 
-            using (var hmac = new HMACSHA256(_sendingKeys.SigningKey))
-            {
-                return hmac.ComputeHash(dataToSign);
-            }
+            using var hmac = new HMACSHA256(_sendingKeys.SigningKey);
+            return hmac.ComputeHash(dataToSign);
         }
 
         public bool VerifySymmetric(byte[] dataToVerify, byte[] signature)
         {
             if (_receivingKeys == null) throw new InvalidOperationException("Keys not derived yet.");
 
-            using (var hmac = new HMACSHA256(_receivingKeys.SigningKey))
-            {
-                byte[] computed = hmac.ComputeHash(dataToVerify);
+            using var hmac = new HMACSHA256(_receivingKeys.SigningKey);
+            byte[] computed = hmac.ComputeHash(dataToVerify);
 
-                // Constant Time Compare, we use a simple approach here
-                if (computed.Length != signature.Length) return false;
-                for (int i = 0; i < computed.Length; i++)
-                {
-                    if (computed[i] != signature[i]) return false;
-                }
-                return true;
+            // Constant Time Compare, we use a simple approach here
+            if (computed.Length != signature.Length) return false;
+            for (int i = 0; i < computed.Length; i++)
+            {
+                if (computed[i] != signature[i]) return false;
             }
+            return true;
         }
 
         public byte[] EncryptSymmetric(byte[] dataToEncrypt)
         {
             if (_sendingKeys == null) throw new InvalidOperationException("Keys not derived yet.");
 
-            using (var aes = Aes.Create())
-            {
-                aes.KeySize = 256;
-                aes.BlockSize = 128;
-                aes.Mode = CipherMode.CBC;
-                aes.Padding = PaddingMode.None;
-                aes.Key = _sendingKeys.EncryptingKey;
-                aes.IV = _sendingKeys.InitializationVector;
+            using var aes = Aes.Create();
+            aes.KeySize = 256;
+            aes.BlockSize = 128;
+            aes.Mode = CipherMode.CBC;
+            aes.Padding = PaddingMode.None;
+            aes.Key = _sendingKeys.EncryptingKey;
+            aes.IV = _sendingKeys.InitializationVector;
 
-                using (var encryptor = aes.CreateEncryptor())
-                {
-                    return encryptor.TransformFinalBlock(dataToEncrypt, 0, dataToEncrypt.Length);
-                }
-            }
+            using var encryptor = aes.CreateEncryptor();
+            return encryptor.TransformFinalBlock(dataToEncrypt, 0, dataToEncrypt.Length);
         }
 
         public byte[] DecryptSymmetric(byte[] dataToDecrypt)
         {
             if (_receivingKeys == null) throw new InvalidOperationException("Keys not derived yet.");
 
-            using (var aes = Aes.Create())
-            {
-                aes.KeySize = 256;
-                aes.BlockSize = 128;
-                aes.Mode = CipherMode.CBC;
-                aes.Padding = PaddingMode.None;
-                aes.Key = _receivingKeys.EncryptingKey;
-                aes.IV = _receivingKeys.InitializationVector;
+            using var aes = Aes.Create();
+            aes.KeySize = 256;
+            aes.BlockSize = 128;
+            aes.Mode = CipherMode.CBC;
+            aes.Padding = PaddingMode.None;
+            aes.Key = _receivingKeys.EncryptingKey;
+            aes.IV = _receivingKeys.InitializationVector;
 
-                using (var decryptor = aes.CreateDecryptor())
-                {
-                    return decryptor.TransformFinalBlock(dataToDecrypt, 0, dataToDecrypt.Length);
-                }
-            }
+            using var decryptor = aes.CreateDecryptor();
+            return decryptor.TransformFinalBlock(dataToDecrypt, 0, dataToDecrypt.Length);
         }
     }
 }

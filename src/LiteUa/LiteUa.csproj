@@ -15,6 +15,7 @@
     <Folder Include="Stack\View\" />
     <Folder Include="Stack\Subscription\" />
     <Folder Include="Stack\SecureChannel\" />
+    <Folder Include="Transport\Headers\" />
     <Folder Include="Transport\TcpMessages\" />
   </ItemGroup>
 

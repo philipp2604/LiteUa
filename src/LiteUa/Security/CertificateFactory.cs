@@ -50,10 +50,10 @@ namespace LiteUa.Security
 
             request.CertificateExtensions.Add(
                 new X509EnhancedKeyUsageExtension(
-                    new OidCollection {
+                    [
                         new Oid("1.3.6.1.5.5.7.3.1"), // Server Auth
                         new Oid("1.3.6.1.5.5.7.3.2")  // Client Auth
-                    },
+                    ],
                     false));
 
             request.CertificateExtensions.Add(
