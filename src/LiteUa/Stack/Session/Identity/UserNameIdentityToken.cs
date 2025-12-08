@@ -1,0 +1,76 @@
+﻿using LiteUa.BuiltIn;
+using LiteUa.Encoding;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace LiteUa.Stack.Session.Identity
+{
+    /// TODO: Add unit tests
+    /// TODO: fix documentation comments
+    /// TODO: Add ToString() method
+    /// TODO: Implement different encryption algorithms based on security policy
+
+    public class UserNameIdentityToken(string policyId, string username, string password) : IUserIdentity
+    {
+        public string PolicyId { get; set; } = policyId;
+        public string UserName { get; set; } = username;
+        public string Password { get; set; } = password;
+
+        private const string EncryptionAlgo = "http://www.w3.org/2001/04/xmlenc#rsa-oaep";
+
+        public ExtensionObject ToExtensionObject(X509Certificate2 serverCertificate, byte[] serverNonce)
+        {
+            ArgumentNullException.ThrowIfNull(serverCertificate);
+            if (serverNonce == null || serverNonce.Length == 0) throw new ArgumentNullException(nameof(serverNonce));
+
+            var ext = new ExtensionObject
+            {
+                TypeId = new NodeId(324),
+                Encoding = 0x01
+            };
+
+            using (var ms = new System.IO.MemoryStream())
+            {
+                var w = new OpcUaBinaryWriter(ms);
+                w.WriteString(PolicyId);
+                w.WriteString(UserName);
+
+                byte[] pwBytes = System.Text.Encoding.UTF8.GetBytes(Password ?? string.Empty);
+                int pwLength = pwBytes.Length;
+                int nonceLength = serverNonce.Length;
+
+                int lengthField = pwLength + nonceLength;
+
+                byte[] dataToEncrypt = new byte[4 + pwLength + nonceLength];
+
+                byte[] lenBytes = BitConverter.GetBytes(lengthField);
+                Array.Copy(lenBytes, 0, dataToEncrypt, 0, 4);
+
+                if (pwLength > 0)
+                {
+                    Array.Copy(pwBytes, 0, dataToEncrypt, 4, pwLength);
+                }
+
+                Array.Copy(serverNonce, 0, dataToEncrypt, 4 + pwLength, nonceLength);
+
+                using (var rsa = serverCertificate.GetRSAPublicKey())
+                {
+                    if (rsa == null) throw new InvalidOperationException("Server certificate does not have a valid RSA public key.");
+
+                    byte[] encryptedPassword = rsa.Encrypt(dataToEncrypt, RSAEncryptionPadding.OaepSHA1);
+                    w.WriteByteString(encryptedPassword);
+                }
+
+                w.WriteString(EncryptionAlgo);
+
+                ext.Body = ms.ToArray();
+            }
+            return ext;
+        }
+    }
+}

@@ -20,9 +20,11 @@ namespace LiteUa.Stack.View
 
         public static BrowseResult Decode(OpcUaBinaryReader reader)
         {
-            var res = new BrowseResult();
-            res.StatusCode = StatusCode.Decode(reader);
-            res.ContinuationPoint = reader.ReadByteString();
+            var res = new BrowseResult
+            {
+                StatusCode = StatusCode.Decode(reader),
+                ContinuationPoint = reader.ReadByteString()
+            };
 
             int count = reader.ReadInt32();
             if (count > 0)
