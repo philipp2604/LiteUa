@@ -4,15 +4,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace LiteUa.Stack.Discovery
+namespace LiteUa.Stack.SecureChannel
 {
     /// TODO: fix documentation comments
 
-    public enum ApplicationType : int
+    public enum SecurityTokenRequestType : int
     {
-        Server = 0,
-        Client = 1,
-        ClientAndServer = 2,
-        DiscoveryServer = 3
+        Issue = 0,
+        Renew = 1
     }
 }
