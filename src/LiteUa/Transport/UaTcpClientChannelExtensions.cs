@@ -12,7 +12,7 @@ namespace LiteUa.Transport
     public static class UaTcpClientChannelExtensions
     {
         public static async Task<TOutput> CallTypedAsync<TInput, TOutput>(
-            this UaTcpClientChannel channel, NodeId objectId, NodeId methodId, TInput input, CancellationToken cancellationToken = default)
+            this UaTcpClientChannel channel, NodeId objectId, NodeId methodId, TInput input)
             where TInput : class
             where TOutput : class, new()
         {
@@ -29,7 +29,7 @@ namespace LiteUa.Transport
             }
 
             // --- CALL ---
-            var outputVariants = await channel.CallAsync(objectId, methodId, cancellationToken, inputVariants);
+            var outputVariants = await channel.CallAsync(objectId, methodId, inputVariants);
 
             // --- OUTPUT MAPPING ---
             var outputResult = new TOutput();

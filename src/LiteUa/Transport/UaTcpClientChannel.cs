@@ -38,7 +38,7 @@ namespace LiteUa.Transport
 
         // --- Connection State ---
         private uint _sequenceNumber = 1;
-        private uint _requestId = 1;
+        private int _requestId = 1;
         public uint SecureChannelId = 0; // 0 while disconnected
         private NodeId _authenticationToken = new(0); // Session Token
         private uint _tokenId;
@@ -133,16 +133,18 @@ namespace LiteUa.Transport
 
         public RequestHeader CreateRequestHeader()
         {
+            uint nextHandle = (uint)Interlocked.Increment(ref _requestId);
+
             return new RequestHeader
             {
                 AuthenticationToken = _authenticationToken,
                 Timestamp = DateTime.UtcNow,
-                RequestHandle = ++_requestId,
+                RequestHandle = nextHandle,
                 TimeoutHint = 10000
             };
         }
 
-        public async Task ConnectAsync(CancellationToken cancellationToken = default)
+        public async Task ConnectAsync()
         {
             var uri = new Uri(_endpointUrl);
             int port = uri.Port == -1 ? 4840 : uri.Port;
@@ -158,7 +160,7 @@ namespace LiteUa.Transport
             await OpenSecureChannelAsync();
         }
 
-        public async Task CreateSessionAsync(string applicationUri, string productUri, string sessionName, CancellationToken cancellationToken = default)
+        public async Task CreateSessionAsync(string applicationUri, string productUri, string sessionName)
         {
             // generate session client nonce
             _sessionClientNonce = new byte[32];
@@ -168,12 +170,7 @@ namespace LiteUa.Transport
 
             var req = new CreateSessionRequest
             {
-                RequestHeader = new RequestHeader
-                {
-                    AuthenticationToken = _authenticationToken,
-                    Timestamp = DateTime.UtcNow,
-                    RequestHandle = ++_requestId
-                },
+                RequestHeader = CreateRequestHeader(),
                 ClientDescription = new ClientDescription
                 {
                     ApplicationUri = applicationUri,
@@ -200,9 +197,9 @@ namespace LiteUa.Transport
             /// TODO: Validate server certificate
         }
 
-        public async Task ActivateSessionAsync(IUserIdentity identity, CancellationToken cancellationToken = default)
+        public async Task ActivateSessionAsync(IUserIdentity identity)
         {
-            if (identity == null) throw new ArgumentNullException(nameof(identity));
+            ArgumentNullException.ThrowIfNull(identity);
 
             ExtensionObject userTokenExt = identity.ToExtensionObject(_serverCertificate, _sessionServerNonce);
 
@@ -245,7 +242,7 @@ namespace LiteUa.Transport
                 _sessionServerNonce = response.ServerNonce;
         }
 
-        public async Task<DataValue[]?> ReadAsync(NodeId[] nodesToRead, CancellationToken cancellationToken = default)
+        public async Task<DataValue[]?> ReadAsync(NodeId[] nodesToRead)
         {
             // build request
             var readValues = new ReadValueId[nodesToRead.Length];
@@ -270,7 +267,7 @@ namespace LiteUa.Transport
             return response.Results;
         }
 
-        public async Task<StatusCode[]?> WriteAsync(NodeId[] nodes, DataValue[] values, CancellationToken cancellationToken = default)
+        public async Task<StatusCode[]?> WriteAsync(NodeId[] nodes, DataValue[] values)
         {
             if (nodes.Length != values.Length) throw new ArgumentException("Nodes and Values count mismatch");
 
@@ -285,12 +282,7 @@ namespace LiteUa.Transport
 
             var req = new WriteRequest
             {
-                RequestHeader = new RequestHeader
-                {
-                    AuthenticationToken = _authenticationToken,
-                    Timestamp = DateTime.UtcNow,
-                    RequestHandle = ++_requestId
-                },
+                RequestHeader = CreateRequestHeader(),
                 NodesToWrite = writeValues
             };
 
@@ -298,11 +290,11 @@ namespace LiteUa.Transport
             return response.Results;
         }
 
-        public async Task<ReferenceDescription[]?> BrowseAsync(NodeId nodeId, CancellationToken cancellationToken = default)
+        public async Task<ReferenceDescription[]?> BrowseAsync(NodeId nodeId)
         {
             var req = new BrowseRequest
             {
-                RequestHeader = new RequestHeader { AuthenticationToken = _authenticationToken, Timestamp = DateTime.UtcNow, RequestHandle = ++_requestId },
+                RequestHeader = CreateRequestHeader(),
                 NodesToBrowse =
                 [
                     new BrowseDescription(nodeId)
@@ -325,7 +317,7 @@ namespace LiteUa.Transport
             return [];
         }
 
-        public async Task<Variant[]> CallAsync(NodeId objectId, NodeId methodId, CancellationToken cancellationToken = default, params Variant[] inputArguments)
+        public async Task<Variant[]> CallAsync(NodeId objectId, NodeId methodId, params Variant[] inputArguments)
         {
             var req = new CallRequest(
                 [
@@ -416,7 +408,7 @@ namespace LiteUa.Transport
                 }
 
                 // 3. Sequence Header
-                var sequenceHeader = new SequenceHeader { SequenceNumber = _sequenceNumber++, RequestId = _requestId };
+                var sequenceHeader = new SequenceHeader { SequenceNumber = _sequenceNumber++, RequestId = (uint)_requestId };
 
                 // 4. Padding Calculation
                 int plainContentSize = 8 + bodyBytes.Length;
@@ -596,13 +588,7 @@ namespace LiteUa.Transport
 
             var request = new OpenSecureChannelRequest
             {
-                RequestHeader = new RequestHeader
-                {
-                    RequestHandle = ++_requestId,
-                    Timestamp = DateTime.UtcNow,
-                    TimeoutHint = 10000,
-                    AuthenticationToken = _authenticationToken
-                },
+                RequestHeader = CreateRequestHeader(),
                 ClientProtocolVersion = 0,
                 RequestType = SecurityTokenRequestType.Issue,
                 SecurityMode = _securityMode,
@@ -645,7 +631,7 @@ namespace LiteUa.Transport
             var sequenceHeader = new SequenceHeader
             {
                 SequenceNumber = _sequenceNumber++,
-                RequestId = _requestId
+                RequestId = (uint)_requestId
             };
 
             // Plaintext to Encrypt = SequenceHeader(8) + Body + Padding + Signature
@@ -682,8 +668,6 @@ namespace LiteUa.Transport
                     for (int i = 0; i < paddingSize; i++) wPlain.WriteByte(paddingByte);
                 }
                 // Signature (placeholder)
-                // save position
-                long sigPos = wPlain.Position;
                 if (signatureSize > 0) wPlain.WriteBytes(new byte[signatureSize]);
             }
 
@@ -936,7 +920,8 @@ namespace LiteUa.Transport
 
                     // Sequence Header (Start Encryption)
                     long cryptoStart = msFinal.Position;
-                    var seqHeader = new SequenceHeader { SequenceNumber = _sequenceNumber++, RequestId = _requestId++ };
+                    var nextHandle = (uint)Interlocked.Increment(ref _requestId);
+                    var seqHeader = new SequenceHeader { SequenceNumber = _sequenceNumber++, RequestId = nextHandle };
                     seqHeader.Encode(w);
 
                     // Body
@@ -1038,8 +1023,6 @@ namespace LiteUa.Transport
             await ReadExactAsync(_stream, fullBody, totalBodyLen);
 
             byte[] decryptedBytes;
-
-            uint tokenId = BitConverter.ToUInt32(fullBody, 0);
             int cryptoStartOffset = 4; // TokenId Size
 
             if (_securityMode != MessageSecurityMode.None)
@@ -1191,12 +1174,7 @@ namespace LiteUa.Transport
             var req = new GetEndpointsRequest
             {
                 EndpointUrl = _endpointUrl,
-                RequestHeader = new RequestHeader
-                {
-                    AuthenticationToken = _authenticationToken,
-                    Timestamp = DateTime.UtcNow,
-                    RequestHandle = _requestId
-                }
+                RequestHeader = CreateRequestHeader(),
             };
 
             return await SendRequestAsync<GetEndpointsRequest, GetEndpointsResponse>(req);

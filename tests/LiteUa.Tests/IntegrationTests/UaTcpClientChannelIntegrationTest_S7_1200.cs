@@ -1,10 +1,12 @@
 ﻿using LiteUa.BuiltIn;
+using LiteUa.Client;
 using LiteUa.Encoding;
 using LiteUa.Security;
 using LiteUa.Security.Policies;
 using LiteUa.Stack.Discovery;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
+using LiteUa.Stack.Subscription;
 using LiteUa.Transport;
 using System;
 using System.Collections.Generic;
@@ -18,7 +20,7 @@ namespace LiteUa.Tests.IntegrationTests
     [Category("IntegrationTests_S7-1200")]
     public class UaTcpClientChannelIntegrationTests_S7_1200
     {
-        private ITestOutputHelper _output;
+        private readonly ITestOutputHelper _output;
         public const string TestServerUrl = "opc.tcp://192.178.0.1:4840/";
 
         public UaTcpClientChannelIntegrationTests_S7_1200(ITestOutputHelper output)
@@ -27,10 +29,16 @@ namespace LiteUa.Tests.IntegrationTests
             RegisterCustomTypes();
         }
 
-        private void RegisterCustomTypes()
+        ~UaTcpClientChannelIntegrationTests_S7_1200()
         {
-            //TestStruct: 4,98; 4,25
+            CustomUaTypeRegistry.Clear();
+        }
 
+        private static void RegisterCustomTypes()
+        {
+            CustomUaTypeRegistry.Register<TestStruct>(new NodeId(4, 25), TestStruct.Decode, (val, w) => val.Encode(w));
+            CustomUaTypeRegistry.Register<TestStruct>(new NodeId(4, 98), TestStruct.Decode, (val, w) => val.Encode(w));
+            CustomUaTypeRegistry.Register<TestStruct>(new NodeId(4, 104), TestStruct.Decode, (val, w) => val.Encode(w));
         }
 
         [Fact]
@@ -40,7 +48,7 @@ namespace LiteUa.Tests.IntegrationTests
             await using var uaClient = new UaTcpClientChannel(TestServerUrl);
 
             // 2. Act
-            await uaClient.ConnectAsync(default);
+            await uaClient.ConnectAsync();
 
             // 3. Assert
             Assert.True(uaClient.ReceiveBufferSize > 0);
@@ -52,7 +60,7 @@ namespace LiteUa.Tests.IntegrationTests
         {
             // 1. Arrange
             await using var client = new UaTcpClientChannel(TestServerUrl);
-            await client.ConnectAsync(default);
+            await client.ConnectAsync();
 
             // 2. Act
             var endpointsResponse = await client.GetEndpointsAsync();
@@ -71,10 +79,9 @@ namespace LiteUa.Tests.IntegrationTests
             // ------------------------------------------------------------
             EndpointDescription? targetEndpoint = null;
 
-            Console.WriteLine("1. Discovery...");
             await using (var discoveryClient = new UaTcpClientChannel(TestServerUrl))
             {
-                await discoveryClient.ConnectAsync(default);
+                await discoveryClient.ConnectAsync();
                 var endpointsResponse = await discoveryClient.GetEndpointsAsync();
 
                 // Search for Basic256Sha256 with SignAndEncrypt
@@ -88,7 +95,6 @@ namespace LiteUa.Tests.IntegrationTests
             // ------------------------------------------------------------
             // 2. Certificates
             // ------------------------------------------------------------
-            Console.WriteLine("2. Generating Certificates...");
 
             var serverCert = X509CertificateLoader.LoadCertificate(targetEndpoint.ServerCertificate!);
             var clientCert = CertificateFactory.CreateSelfSignedCertificate("S7NexusClient", "urn:localhost:S7NexusClient");
@@ -111,7 +117,7 @@ namespace LiteUa.Tests.IntegrationTests
                 serverCert,
                 MessageSecurityMode.SignAndEncrypt);
             // Handshake (Asymmetric Encrypt/Sign)
-            await secureClient.ConnectAsync(default);
+            await secureClient.ConnectAsync();
             Assert.NotEqual((uint)0, secureClient.SecureChannelId);
 
             // ------------------------------------------------------------
@@ -135,7 +141,7 @@ namespace LiteUa.Tests.IntegrationTests
 
             await using (var discovery = new UaTcpClientChannel(TestServerUrl))
             {
-                await discovery.ConnectAsync(default);
+                await discovery.ConnectAsync();
                 var endpoints = await discovery.GetEndpointsAsync();
 
                 targetEndpoint = endpoints.Endpoints?.FirstOrDefault(e =>
@@ -157,26 +163,24 @@ namespace LiteUa.Tests.IntegrationTests
             var policy = new SecurityPolicyBasic256Sha256(clientCert, serverCert);
 
             // --- 3. Secure Connect & Login ---
-            await using (var client = new UaTcpClientChannel(TestServerUrl, policy, clientCert, serverCert, MessageSecurityMode.SignAndEncrypt))
-            {
-                await client.ConnectAsync(default);
+            await using var client = new UaTcpClientChannel(TestServerUrl, policy, clientCert, serverCert, MessageSecurityMode.SignAndEncrypt);
+            await client.ConnectAsync();
 
-                // Create Session
-                await client.CreateSessionAsync(appUri, "urn:S7Nexus:Lib", "AnonymousSession");
+            // Create Session
+            await client.CreateSessionAsync(appUri, "urn:S7Nexus:Lib", "AnonymousSession");
 
-                // Create Identity
-                var identity = new AnonymousIdentity(anonTokenPolicy.PolicyId);
+            // Create Identity
+            var identity = new AnonymousIdentity(anonTokenPolicy.PolicyId);
 
-                // Login
-                await client.ActivateSessionAsync(identity);
+            // Login
+            await client.ActivateSessionAsync(identity);
 
-                // Verify: Send a Request
-                var response = await client.GetEndpointsAsync();
+            // Verify: Send a Request
+            var response = await client.GetEndpointsAsync();
 
-                Assert.NotNull(response);
-                Assert.NotNull(response.Endpoints);
-                Assert.NotEmpty(response.Endpoints);
-            }
+            Assert.NotNull(response);
+            Assert.NotNull(response.Endpoints);
+            Assert.NotEmpty(response.Endpoints);
         }
 
         [Fact]
@@ -186,10 +190,9 @@ namespace LiteUa.Tests.IntegrationTests
             EndpointDescription? targetEndpoint = null;
             UserTokenPolicy? userTokenPolicy = null;
 
-            Console.WriteLine("1. Discovery...");
             await using (var discovery = new UaTcpClientChannel(TestServerUrl))
             {
-                await discovery.ConnectAsync(default);
+                await discovery.ConnectAsync();
                 var endpoints = await discovery.GetEndpointsAsync();
 
                 targetEndpoint = endpoints.Endpoints?.FirstOrDefault(e =>
@@ -213,31 +216,27 @@ namespace LiteUa.Tests.IntegrationTests
 
             // 3. Channel Setup
             var channelPolicy = new SecurityPolicyBasic256Sha256(clientCert, serverCert);
-
-            Console.WriteLine("2. Connecting (Plain Text Channel)...");
-            await using (var client = new UaTcpClientChannel(
+            await using var client = new UaTcpClientChannel(
                 TestServerUrl,
                 channelPolicy,
                 clientCert,
                 serverCert,
-                MessageSecurityMode.SignAndEncrypt))
-            {
-                await client.ConnectAsync(default);
+                MessageSecurityMode.SignAndEncrypt);
+            await client.ConnectAsync();
 
-                // Create Session
-                await client.CreateSessionAsync("urn:localhost:S7NexusClient", "urn:S7Nexus:Lib", "MixedSession");
+            // Create Session
+            await client.CreateSessionAsync("urn:localhost:S7NexusClient", "urn:S7Nexus:Lib", "MixedSession");
 
-                // 4. Login
-                var identity = new UserNameIdentity(userTokenPolicy.PolicyId, "username", "password");
-                await client.ActivateSessionAsync(identity);
+            // 4. Login
+            var identity = new UserNameIdentity(userTokenPolicy.PolicyId, "username", "password");
+            await client.ActivateSessionAsync(identity);
 
-                // Verify: Send a Request
-                var response = await client.GetEndpointsAsync();
+            // Verify: Send a Request
+            var response = await client.GetEndpointsAsync();
 
-                Assert.NotNull(response);
-                Assert.NotNull(response.Endpoints);
-                Assert.NotEmpty(response.Endpoints);
-            }
+            Assert.NotNull(response);
+            Assert.NotNull(response.Endpoints);
+            Assert.NotEmpty(response.Endpoints);
         }
 
         [Fact]
@@ -295,43 +294,41 @@ namespace LiteUa.Tests.IntegrationTests
                 nodesToRead[i] = new NodeId(4, testConfigs[i].NodeId);
             }
 
-            await using (var client = new UaTcpClientChannel(TestServerUrl))
+            await using var client = new UaTcpClientChannel(TestServerUrl);
+            await client.ConnectAsync();
+            await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "S7BulkRead");
+            await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+
+            var results = await client.ReadAsync(nodesToRead);
+
+            Assert.NotNull(results);
+            Assert.NotEmpty(results);
+            Assert.Equal(testConfigs.Length, results.Length);
+
+            for (int i = 0; i < results.Length; i++)
             {
-                await client.ConnectAsync(default);
-                await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "S7BulkRead");
-                await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+                var result = results[i];
+                var config = testConfigs[i];
 
-                var results = await client.ReadAsync(nodesToRead);
-
-                Assert.NotNull(results);
-                Assert.NotEmpty(results);
-                Assert.Equal(testConfigs.Length, results.Length);
-
-                for (int i = 0; i < results.Length; i++)
+                if (!result.StatusCode.IsGood)
                 {
-                    var result = results[i];
-                    var config = testConfigs[i];
+                    throw new Exception($"Bad StatusCode for {config.Name}: {result.StatusCode}");
+                }
 
-                    if (!result.StatusCode.IsGood)
-                    {
-                        throw new Exception($"Bad StatusCode for {config.Name}: {result.StatusCode}");
-                    }
+                if (result.Value?.Type != config.Type)
+                {
+                    throw new Exception($"Type Mismatch for {config.Name}. Expected {config.Type}, Got {result.Value?.Type}");
+                }
 
-                    if (result.Value?.Type != config.Type)
-                    {
-                        throw new Exception($"Type Mismatch for {config.Name}. Expected {config.Type}, Got {result.Value?.Type}");
-                    }
+                if (result.Value.IsArray != config.IsArray)
+                {
+                    throw new Exception($"Array Flag Mismatch for {config.Name}. Expected {config.IsArray}, Got {result.Value.IsArray}");
+                }
 
-                    if (result.Value.IsArray != config.IsArray)
-                    {
-                        throw new Exception($"Array Flag Mismatch for {config.Name}. Expected {config.IsArray}, Got {result.Value.IsArray}");
-                    }
-
-                    if (config.IsArray)
-                    {
-                        var arr = result.Value.Value as Array;
-                        Assert.Equal(3, arr?.Length);
-                    }
+                if (config.IsArray)
+                {
+                    var arr = result.Value.Value as Array;
+                    Assert.Equal(3, arr?.Length);
                 }
             }
         }
@@ -339,37 +336,97 @@ namespace LiteUa.Tests.IntegrationTests
         [Fact]
         public async Task Read_And_Decode_Custom_S7DTL()
         {
-            NodeId dtlNodeId = new NodeId(4, 25);
-            await using (var client = new UaTcpClientChannel(TestServerUrl))
+            NodeId dtlNodeId = new(4, 25);
+            await using var client = new UaTcpClientChannel(TestServerUrl);
+            await client.ConnectAsync();
+            await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "TypeTest");
+            await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+
+            // 1. Read
+            var results = await client.ReadAsync([dtlNodeId]);
+            var extObj = results?[0].Value?.Value as ExtensionObject;
+
+            Assert.NotNull(extObj);
+
+            NodeId encodingId = extObj.TypeId;
+
+            // 2. Register
+            CustomUaTypeRegistry.Register(encodingId, S7Dtl.Decode, (val, w) => val.Encode(w));
+
+            // 3. Read again, now with decoding
+            var results2 = await client.ReadAsync([dtlNodeId]);
+            var extObj2 = results2?[0].Value?.Value as ExtensionObject;
+
+            Assert.NotNull(extObj2?.DecodedValue);
+            Assert.IsType<S7Dtl>(extObj2.DecodedValue);
+
+            var dtl = (S7Dtl)extObj2.DecodedValue;
+            _output.WriteLine($"Decoded DTL: {dtl}");
+
+            // Year should be > 2000
+            Assert.True(dtl.Year > 2000);
+        }
+
+        [Fact]
+        public async Task Write_S7DTL()
+        {
+            NodeId variableNodeId = new(4, 25); // Deine DTL Variable ID
+            NodeId typeEncodingId = new(4, 24); // Deine Encoding ID (siehe RegistryTest)
+
+            // 1. Register
+            CustomUaTypeRegistry.Register<S7Dtl>(typeEncodingId, S7Dtl.Decode, (val, w) => val.Encode(w));
+
+            // 2. Create object
+            var myTime = new S7Dtl
             {
-                await client.ConnectAsync(default);
-                await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "TypeTest");
-                await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+                Year = 2025,
+                Month = 12,
+                Day = 24,
+                Hour = 18,
+                Minute = 30,
+                Second = 0
+            };
 
-                // 1. Read
-                var results = await client.ReadAsync(new[] { dtlNodeId });
-                var extObj = results?[0].Value?.Value as ExtensionObject;
+            // 3. Wrapper
+            var extObj = new ExtensionObject { DecodedValue = myTime };
+            var dataValue = new DataValue
+            {
+                Value = new Variant(extObj, BuiltInType.ExtensionObject)
+            };
 
-                Assert.NotNull(extObj);
+            await using var client = new UaTcpClientChannel(TestServerUrl);
+            await client.ConnectAsync();
+            await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "WriteDTL");
+            await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
 
-                NodeId encodingId = extObj.TypeId;
+            // INITIAL READ
+            var initialRead = await client.ReadAsync([variableNodeId]);
+            var initialExt = initialRead?[0]?.Value?.Value as ExtensionObject;
+            Assert.NotNull(initialExt);
+            var initialDtl = (S7Dtl?)initialExt.DecodedValue;
+            Assert.NotNull(initialDtl);
 
-                // 2. Register
-                CustomUaTypeRegistry.Register(encodingId, S7Dtl.Decode, (val, w) => val.Encode(w));
 
-                // 3. Read again, now with decoding
-                var results2 = await client.ReadAsync(new[] { dtlNodeId });
-                var extObj2 = results2?[0].Value?.Value as ExtensionObject;
+            // WRITE
+            var results = await client.WriteAsync([variableNodeId], [dataValue]);
+            Assert.NotNull(results);
+            Assert.NotEmpty(results);
+            Assert.True(results?[0].IsGood);
 
-                Assert.NotNull(extObj2?.DecodedValue);
-                Assert.IsType<S7Dtl>(extObj2.DecodedValue);
+            // READ BACK
+            var readRes = await client.ReadAsync([variableNodeId]);
+            var readExt = readRes?[0].Value?.Value as ExtensionObject;
+            Assert.NotNull(readExt);
+            var readDtl = (S7Dtl?)readExt.DecodedValue;
+            Assert.NotNull(readDtl);
+            Assert.Equal(2025, readDtl.Year);
 
-                var dtl = (S7Dtl)extObj2.DecodedValue;
-                _output.WriteLine($"Decoded DTL: {dtl}");
-
-                // Year should be > 2000
-                Assert.True(dtl.Year > 2000);
-            }
+            // RESET
+            var origDataValue = new DataValue
+            {
+                Value = new Variant(initialExt, BuiltInType.ExtensionObject)
+            };
+            results = await client.WriteAsync([variableNodeId], [origDataValue]);
         }
 
         [Fact]
@@ -378,48 +435,218 @@ namespace LiteUa.Tests.IntegrationTests
             var nodeId = new NodeId(4, 72);
             short newValue = 1234;
 
+            await using var client = new UaTcpClientChannel(TestServerUrl);
+            await client.ConnectAsync();
+            await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "WriteSession");
+            await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+
+            // 1. Read original value
+            var originalRead = (await client.ReadAsync([nodeId]))?.FirstOrDefault()?.Value?.Value;
+            Assert.NotNull(originalRead);
+
+            // 2. Prepare new DataValue
+            var dataValue = new DataValue
+            {
+                Value = new Variant(newValue, BuiltInType.Int16)
+            };
+
+            // 3. Write
+            var results = await client.WriteAsync([nodeId], [dataValue]);
+
+            Assert.NotNull(results);
+            Assert.Single(results);
+            Assert.True(results[0].IsGood);
+
+            // 4. Read back
+            var readResults = await client.ReadAsync([nodeId]);
+
+            var readVal = (short?)readResults?[0].Value?.Value;
+            Assert.NotNull(readVal);
+            Assert.Equal(newValue, readVal);
+
+            // 5. Reset to original
+            dataValue = new DataValue
+            {
+                Value = new Variant(originalRead, BuiltInType.Int16)
+            };
+
+            results = await client.WriteAsync([nodeId], [dataValue]);
+
+            Assert.NotNull(results);
+            Assert.Single(results);
+            Assert.True(results[0].IsGood);
+        }
+
+        [Fact]
+        public async Task Write_Custom_Struct_Array()
+        {
+            NodeId variableNodeId = new NodeId(4, 105);
+
+            var myStructs = new TestStruct[3];
+            myStructs[0] = new TestStruct { TestStructBool = true, TestStructInt = 10, TestStructString = "Elem 1" };
+            myStructs[1] = new TestStruct { TestStructBool = false, TestStructInt = 20, TestStructString = "Elem 2" };
+            myStructs[2] = new TestStruct { TestStructBool = true, TestStructInt = 30, TestStructString = "Elem 3" };
+
+            var extObjArray = new ExtensionObject[3];
+            for (int i = 0; i < 3; i++)
+            {
+                extObjArray[i] = new ExtensionObject { DecodedValue = myStructs[i] };
+            }
+
+            var dataValue = new DataValue
+            {
+                Value = new Variant(extObjArray, BuiltInType.ExtensionObject, true) // manually set IsArray = true
+            };
+
             await using (var client = new UaTcpClientChannel(TestServerUrl))
             {
-                await client.ConnectAsync(default);
-                await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "WriteSession");
+                await client.ConnectAsync();
+                await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "WriteStructArr");
                 await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
 
-                // 1. Read original value
-                var originalRead = (await client.ReadAsync(new[] { nodeId }))?.FirstOrDefault()?.Value?.Value;
-                Assert.NotNull(originalRead);
+                // INITIAL READ
+                var initialRead = await client.ReadAsync(new[] { variableNodeId });
+                Assert.NotNull(initialRead?[0]?.Value);
+                Assert.True(initialRead?[0]?.Value?.IsArray);
 
-                // 2. Prepare new DataValue
-                var dataValue = new DataValue
+                var initialExtArray = initialRead?[0]?.Value!.Value as ExtensionObject[];
+                Assert.NotNull(initialExtArray);
+                Assert.Equal(3, initialExtArray.Length);
+
+                // WRITE
+                var results = await client.WriteAsync(new[] { variableNodeId }, new[] { dataValue });
+                Assert.True(results?[0].IsGood);
+
+                // READ BACK (Verify)
+                var readRes = await client.ReadAsync(new[] { variableNodeId });
+                Assert.NotNull(readRes?[0]?.Value);
+                var readExtArray = readRes[0].Value!.Value as ExtensionObject[];
+
+                Assert.NotNull(readExtArray);
+                Assert.Equal(3, readExtArray.Length);
+
+                // Check
+                var item0 = (TestStruct?)readExtArray[0].DecodedValue;
+                var item1 = (TestStruct?)readExtArray[1].DecodedValue;
+                var item2 = (TestStruct?)readExtArray[2].DecodedValue;
+
+                Assert.NotNull(item0);
+                Assert.NotNull(item1);
+                Assert.NotNull(item2);
+
+                Assert.True(item0.TestStructBool);
+                Assert.Equal("Elem 1", item0.TestStructString);
+
+                Assert.False(item1.TestStructBool);
+                Assert.Equal(20, item1.TestStructInt);
+
+                Assert.Equal("Elem 3", item2.TestStructString);
+
+                Console.WriteLine("Read Back Verification Successful.");
+
+                // RESET
+                var origDataValue = new DataValue
                 {
-                    Value = new Variant(newValue, BuiltInType.Int16)
+                    Value = new Variant(initialExtArray, BuiltInType.ExtensionObject, true)
                 };
-
-                // 3. Write
-                var results = await client.WriteAsync(new[] { nodeId }, new[] { dataValue });
-
-                Assert.NotNull(results);
-                Assert.Single(results);
-                Assert.True(results[0].IsGood);
-
-                // 4. Read back
-                var readResults = await client.ReadAsync(new[] { nodeId });
-
-                var readVal = (short?)readResults?[0].Value?.Value;
-                Assert.NotNull(readVal);
-                Assert.Equal(newValue, readVal);
-
-                // 5. Reset to original
-                dataValue = new DataValue
-                {
-                    Value = new Variant(originalRead, BuiltInType.Int16)
-                };
-
-                results = await client.WriteAsync(new[] { nodeId }, new[] { dataValue });
-
-                Assert.NotNull(results);
-                Assert.Single(results);
-                Assert.True(results[0].IsGood);
+                await client.WriteAsync(new[] { variableNodeId }, new[] { origDataValue });
             }
+        }
+
+        [Fact]
+        public async Task Browse_Objects_Folder()
+        {
+            await using (var client = new UaTcpClientChannel(TestServerUrl))
+            {
+                await client.ConnectAsync();
+                await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "Browse");
+                await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+
+                // Objects Folder: i=85
+                var references = await client.BrowseAsync(new NodeId(0, 85));
+
+                Assert.NotNull(references);
+                Assert.NotEmpty(references);
+
+                // Check for "Server" object
+                Assert.Contains(references, r => r.BrowseName?.Name == "Server");
+            }
+        }
+
+        [Fact]
+        public async Task Subscribe_Value_Change()
+        {
+            // Setup
+            await using var client = new UaTcpClientChannel(TestServerUrl);
+            await client.ConnectAsync();
+            await client.CreateSessionAsync("urn:sub", "urn:sub", "SubSession");
+            await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+
+            var sub = new Subscription(client);
+            await sub.CreateAsync(500);
+
+            var tcsInitial = new TaskCompletionSource<short>();
+            var tcsUpdate = new TaskCompletionSource<short>();
+
+            // NodeId (TestInt)
+            var targetNode = new NodeId(4, 72);
+
+            sub.DataChanged += (handle, val) =>
+            {
+                if (handle == 42 && val.Value != null)
+                {
+                    short? currentVal = (short?)val.Value.Value;
+
+                    Assert.NotNull(currentVal);
+
+                    if (!tcsInitial.Task.IsCompleted)
+                    {
+                        tcsInitial.TrySetResult((short)currentVal);
+                    }
+                    else if (!tcsUpdate.Task.IsCompleted)
+                    {
+                        short oldVal = tcsInitial.Task.Result;
+                        if (currentVal != oldVal)
+                        {
+                            tcsUpdate.TrySetResult((short)currentVal);
+                        }
+                    }
+                }
+            };
+
+            // 1. Start Subscription
+            await sub.CreateMonitoredItemAsync(targetNode, 42);
+
+            // 2. Wait for initial value (max 5s)
+            var initialTask = await Task.WhenAny(tcsInitial.Task, Task.Delay(5000));
+            if (initialTask != tcsInitial.Task) throw new TimeoutException("Initial value not received");
+
+            short initialValue = await tcsInitial.Task;
+
+            // 3. Trigger: Change value
+            short newValue = (short)(initialValue + 1);
+            var writeResults = await client.WriteAsync(new[] { targetNode }, new[] {
+                new DataValue { Value = new Variant(newValue, BuiltInType.Int16) }
+            });
+
+            Assert.True(writeResults?[0].IsGood);
+
+            // 4. Wait for update (max 5s)
+            var updateTask = await Task.WhenAny(tcsUpdate.Task, Task.Delay(5000));
+            if (updateTask != tcsUpdate.Task) throw new TimeoutException("Updated value not received via Subscription");
+
+            short receivedUpdate = await tcsUpdate.Task;
+            Console.WriteLine($"Received Update Value: {receivedUpdate}");
+
+            // 5. Assert
+            Assert.Equal(newValue, receivedUpdate);
+
+            // Cleanup: Reset value
+            await client.WriteAsync(new[] { targetNode }, new[] {
+                new DataValue { Value = new Variant(initialValue, BuiltInType.Int16) }
+            });
+
+            sub.Stop();
         }
 
         #region Helper classes
@@ -441,16 +668,17 @@ namespace LiteUa.Tests.IntegrationTests
 
             public static S7Dtl Decode(OpcUaBinaryReader reader)
             {
-                var dtl = new S7Dtl();
-                dtl.Year = reader.ReadUInt16();
-
-                dtl.Month = reader.ReadByte();
-                dtl.Day = reader.ReadByte();
-                dtl.Weekday = reader.ReadByte();
-                dtl.Hour = reader.ReadByte();
-                dtl.Minute = reader.ReadByte();
-                dtl.Second = reader.ReadByte();
-                dtl.Nanosecond = reader.ReadUInt32();
+                var dtl = new S7Dtl
+                {
+                    Year = reader.ReadUInt16(),
+                    Month = reader.ReadByte(),
+                    Day = reader.ReadByte(),
+                    Weekday = reader.ReadByte(),
+                    Hour = reader.ReadByte(),
+                    Minute = reader.ReadByte(),
+                    Second = reader.ReadByte(),
+                    Nanosecond = reader.ReadUInt32()
+                };
                 return dtl;
             }
 
@@ -467,6 +695,34 @@ namespace LiteUa.Tests.IntegrationTests
             }
 
             public override string ToString() => $"{Year}-{Month}-{Day} {Hour}:{Minute}:{Second}.{Nanosecond}";
+        }
+
+        private class TestStruct
+        {
+            public bool TestStructBool { get; set; }
+            public short TestStructInt { get; set; }
+            public string TestStructString { get; set; } = string.Empty;
+
+            public static TestStruct Decode(OpcUaBinaryReader reader)
+            {
+                var testStruct = new TestStruct
+                {
+                    TestStructBool = reader.ReadBoolean(),
+                    TestStructInt = reader.ReadInt16(),
+                    TestStructString = reader.ReadString() ?? string.Empty
+                };
+
+                return testStruct;
+            }
+
+            public void Encode(OpcUaBinaryWriter writer)
+            {
+                writer.WriteBoolean(TestStructBool);
+                writer.WriteInt16(TestStructInt);
+                writer.WriteString(TestStructString);
+            }
+
+            public override string ToString() => $"TestStructBool:{TestStructBool} - TestStructInt:{TestStructInt} - TestStructString:{TestStructString}";
         }
         #endregion
     }

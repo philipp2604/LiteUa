@@ -72,6 +72,19 @@ namespace LiteUa.BuiltIn
         }
 
         /// <summary>
+        /// Creates a new instance of the <see cref="Variant"/> class.
+        /// </summary>
+        /// <param name="value">The variant's value.</param>
+        /// <param name="type">The variant's <see cref="BuiltInType"/>.</param>
+        /// <param name="isArray">Manually sets whether the variant is an array.</param>
+        public Variant(object? value, BuiltInType type, bool isArray)
+        {
+            Value = value;
+            Type = type;
+            IsArray = isArray;
+        }
+
+        /// <summary>
         /// Decodes a Variant using the provided <see cref="OpcUaBinaryReader"/>.
         /// </summary>
         /// <param name="reader">The <see cref="OpcUaBinaryReader"/> to use for decoding.</param>
