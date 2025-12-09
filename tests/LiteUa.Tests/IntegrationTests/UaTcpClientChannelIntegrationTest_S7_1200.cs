@@ -29,7 +29,7 @@ namespace LiteUa.Tests.IntegrationTests
 
         private void RegisterCustomTypes()
         {
-            //TestStruct: 4,98
+            //TestStruct: 4,98; 4,25
 
         }
 
@@ -335,5 +335,139 @@ namespace LiteUa.Tests.IntegrationTests
                 }
             }
         }
+
+        [Fact]
+        public async Task Read_And_Decode_Custom_S7DTL()
+        {
+            NodeId dtlNodeId = new NodeId(4, 25);
+            await using (var client = new UaTcpClientChannel(TestServerUrl))
+            {
+                await client.ConnectAsync(default);
+                await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "TypeTest");
+                await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+
+                // 1. Read
+                var results = await client.ReadAsync(new[] { dtlNodeId });
+                var extObj = results?[0].Value?.Value as ExtensionObject;
+
+                Assert.NotNull(extObj);
+
+                NodeId encodingId = extObj.TypeId;
+
+                // 2. Register
+                CustomUaTypeRegistry.Register(encodingId, S7Dtl.Decode, (val, w) => val.Encode(w));
+
+                // 3. Read again, now with decoding
+                var results2 = await client.ReadAsync(new[] { dtlNodeId });
+                var extObj2 = results2?[0].Value?.Value as ExtensionObject;
+
+                Assert.NotNull(extObj2?.DecodedValue);
+                Assert.IsType<S7Dtl>(extObj2.DecodedValue);
+
+                var dtl = (S7Dtl)extObj2.DecodedValue;
+                _output.WriteLine($"Decoded DTL: {dtl}");
+
+                // Year should be > 2000
+                Assert.True(dtl.Year > 2000);
+            }
+        }
+
+        [Fact]
+        public async Task Write_And_Read_Back_Int16()
+        {
+            var nodeId = new NodeId(4, 72);
+            short newValue = 1234;
+
+            await using (var client = new UaTcpClientChannel(TestServerUrl))
+            {
+                await client.ConnectAsync(default);
+                await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "WriteSession");
+                await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+
+                // 1. Read original value
+                var originalRead = (await client.ReadAsync(new[] { nodeId }))?.FirstOrDefault()?.Value?.Value;
+                Assert.NotNull(originalRead);
+
+                // 2. Prepare new DataValue
+                var dataValue = new DataValue
+                {
+                    Value = new Variant(newValue, BuiltInType.Int16)
+                };
+
+                // 3. Write
+                var results = await client.WriteAsync(new[] { nodeId }, new[] { dataValue });
+
+                Assert.NotNull(results);
+                Assert.Single(results);
+                Assert.True(results[0].IsGood);
+
+                // 4. Read back
+                var readResults = await client.ReadAsync(new[] { nodeId });
+
+                var readVal = (short?)readResults?[0].Value?.Value;
+                Assert.NotNull(readVal);
+                Assert.Equal(newValue, readVal);
+
+                // 5. Reset to original
+                dataValue = new DataValue
+                {
+                    Value = new Variant(originalRead, BuiltInType.Int16)
+                };
+
+                results = await client.WriteAsync(new[] { nodeId }, new[] { dataValue });
+
+                Assert.NotNull(results);
+                Assert.Single(results);
+                Assert.True(results[0].IsGood);
+            }
+        }
+
+        #region Helper classes
+        private class S7Dtl
+        {
+            public ushort Year { get; set; }
+            public byte Month { get; set; }
+            public byte Day { get; set; }
+            public byte Weekday { get; set; }
+            public byte Hour { get; set; }
+            public byte Minute { get; set; }
+            public byte Second { get; set; }
+            public uint Nanosecond { get; set; }
+
+            public DateTime ToDateTime()
+            {
+                return new DateTime(Year, Month, Day, Hour, Minute, Second).AddTicks(Nanosecond / 100);
+            }
+
+            public static S7Dtl Decode(OpcUaBinaryReader reader)
+            {
+                var dtl = new S7Dtl();
+                dtl.Year = reader.ReadUInt16();
+
+                dtl.Month = reader.ReadByte();
+                dtl.Day = reader.ReadByte();
+                dtl.Weekday = reader.ReadByte();
+                dtl.Hour = reader.ReadByte();
+                dtl.Minute = reader.ReadByte();
+                dtl.Second = reader.ReadByte();
+                dtl.Nanosecond = reader.ReadUInt32();
+                return dtl;
+            }
+
+            public void Encode(OpcUaBinaryWriter writer)
+            {
+                writer.WriteUInt16(Year);
+                writer.WriteByte(Month);
+                writer.WriteByte(Day);
+                writer.WriteByte(Weekday);
+                writer.WriteByte(Hour);
+                writer.WriteByte(Minute);
+                writer.WriteByte(Second);
+                writer.WriteUInt32(Nanosecond);
+            }
+
+            public override string ToString() => $"{Year}-{Month}-{Day} {Hour}:{Minute}:{Second}.{Nanosecond}";
+        }
+        #endregion
     }
 }

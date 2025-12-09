@@ -15,7 +15,7 @@ namespace LiteUa.Stack.Attribute
 
     public class WriteResponse
     {
-        public static readonly NodeId NodeId = new(674);
+        public static readonly NodeId NodeId = new(676);
 
         public ResponseHeader? ResponseHeader { get; set; }
         public StatusCode[]? Results { get; set; }
