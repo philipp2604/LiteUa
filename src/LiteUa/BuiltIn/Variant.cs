@@ -36,7 +36,7 @@ namespace LiteUa.BuiltIn
         /// <summary>
         /// Gets the dimensions of the array if the Variant represents a multi-dimensional array.
         /// </summary>
-        public int[]? ArrayDimensions { get; private set; }
+        public int[]? ArrayDimensions { get; set; }
 
         /// <summary>
         /// Creates a new instance of the <see cref="Variant"/> class.
