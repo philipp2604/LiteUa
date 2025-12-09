@@ -15,7 +15,7 @@ namespace LiteUa.Stack.Session.Identity
     /// TODO: Add ToString() method
     /// TODO: Implement different encryption algorithms based on security policy
 
-    public class UserNameIdentityToken(string policyId, string username, string password) : IUserIdentity
+    public class UserNameIdentity(string policyId, string username, string password) : IUserIdentity
     {
         public string PolicyId { get; set; } = policyId;
         public string UserName { get; set; } = username;
@@ -23,7 +23,7 @@ namespace LiteUa.Stack.Session.Identity
 
         private const string EncryptionAlgo = "http://www.w3.org/2001/04/xmlenc#rsa-oaep";
 
-        public ExtensionObject ToExtensionObject(X509Certificate2 serverCertificate, byte[] serverNonce)
+        public ExtensionObject ToExtensionObject(X509Certificate2? serverCertificate, byte[]? serverNonce)
         {
             ArgumentNullException.ThrowIfNull(serverCertificate);
             if (serverNonce == null || serverNonce.Length == 0) throw new ArgumentNullException(nameof(serverNonce));

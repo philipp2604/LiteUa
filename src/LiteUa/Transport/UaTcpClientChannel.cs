@@ -1,0 +1,1230 @@
+﻿using LiteUa.BuiltIn;
+using LiteUa.Encoding;
+using LiteUa.Security;
+using LiteUa.Security.Policies;
+using LiteUa.Stack.Attribute;
+using LiteUa.Stack.Discovery;
+using LiteUa.Stack.Method;
+using LiteUa.Stack.SecureChannel;
+using LiteUa.Stack.Session;
+using LiteUa.Stack.Session.Identity;
+using LiteUa.Stack.Subscription;
+using LiteUa.Stack.Subscription.MonitoredItem;
+using LiteUa.Stack.View;
+using LiteUa.Transport.Headers;
+using LiteUa.Transport.TcpMessages;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace LiteUa.Transport
+{
+    /// TODO: Add unit tests
+    /// TODO: fix documentation comments
+    /// TODO: Add ToString() method
+
+    public class UaTcpClientChannel : IDisposable, IAsyncDisposable
+    {
+        private TcpClient? _client;
+        private NetworkStream? _stream;
+        private readonly string _endpointUrl;
+
+        private readonly SemaphoreSlim _lock = new(1, 1);
+
+        // --- Connection State ---
+        private uint _sequenceNumber = 1;
+        private uint _requestId = 1;
+        public uint SecureChannelId = 0; // 0 while disconnected
+        private NodeId _authenticationToken = new(0); // Session Token
+        private uint _tokenId;
+
+        // --- Renewal Management ---
+        private CancellationTokenSource? _renewCts;
+        private Task? _renewTask;
+
+        // --- Configuration / Security ---
+        private readonly ISecurityPolicy _securityPolicy;
+        private readonly X509Certificate2? _clientCertificate;
+        private readonly X509Certificate2? _serverCertificate;
+        private byte[]? _clientNonce;
+        private readonly MessageSecurityMode _securityMode;
+        private byte[]? _sessionServerNonce;
+        private byte[]? _sessionClientNonce;
+
+        // --- Negotiated Parameters ---
+        public uint SendBufferSize { get; private set; }
+        public uint ReceiveBufferSize { get; private set; }
+        public uint MaxMessageSize { get; private set; }
+        public uint MaxChunkCount { get; private set; }
+
+        public UaTcpClientChannel(
+            string endpointUrl,
+            ISecurityPolicy? securityPolicy = null,
+            X509Certificate2? clientCertificate = null,
+            X509Certificate2? serverCertificate = null,
+            MessageSecurityMode securityMode = MessageSecurityMode.None)
+        {
+            _endpointUrl = endpointUrl;
+            // Fallback
+            _securityPolicy = securityPolicy ?? new SecurityPolicyNone();
+            _clientCertificate = clientCertificate;
+            _serverCertificate = serverCertificate;
+
+            // Generate nonce (min 32 bytes for 256bit security)
+            _clientNonce = new byte[32];
+            using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+            {
+                rng.GetBytes(_clientNonce);
+            }
+
+            _securityMode = securityMode;
+        }
+
+        public async Task DisconnectAsync()
+        {
+            _renewCts?.Cancel();
+
+            // close session if exists
+            if (_authenticationToken.NumericIdentifier != 0)
+            {
+                try
+                {
+                    var req = new CloseSessionRequest
+                    {
+                        RequestHeader = CreateRequestHeader(),
+                        DeleteSubscriptions = true
+                    };
+                    await SendRequestAsync<CloseSessionRequest, CloseSessionResponse>(req);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: CloseSession failed: {ex.Message}");
+                }
+            }
+
+            // close secure channel if exists
+            if (SecureChannelId != 0)
+            {
+                try
+                {
+                    var req = new CloseSecureChannelRequest
+                    {
+                        RequestHeader = CreateRequestHeader()
+                    };
+                    await SendRequestAsync<CloseSecureChannelRequest, CloseSecureChannelResponse>(req);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Info: CloseSecureChannel response exception (expected): {ex.Message}");
+                }
+            }
+
+            // close socket
+            _stream?.Dispose();
+            _client?.Dispose();
+            _stream = null;
+            _client = null;
+        }
+
+        public RequestHeader CreateRequestHeader()
+        {
+            return new RequestHeader
+            {
+                AuthenticationToken = _authenticationToken,
+                Timestamp = DateTime.UtcNow,
+                RequestHandle = ++_requestId,
+                TimeoutHint = 10000
+            };
+        }
+
+        public async Task ConnectAsync(CancellationToken cancellationToken = default)
+        {
+            var uri = new Uri(_endpointUrl);
+            int port = uri.Port == -1 ? 4840 : uri.Port;
+
+            _client = new TcpClient();
+            await _client.ConnectAsync(uri.Host, port);
+            _stream = _client.GetStream();
+
+            // 1. Hello / Acknowledge
+            await PerformHandshakeAsync(uri.AbsoluteUri);
+
+            // 2. Open Secure Channel
+            await OpenSecureChannelAsync();
+        }
+
+        public async Task CreateSessionAsync(string applicationUri, string productUri, string sessionName, CancellationToken cancellationToken = default)
+        {
+            // generate session client nonce
+            _sessionClientNonce = new byte[32];
+            using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create()) rng.GetBytes(_sessionClientNonce);
+
+            byte[] clientCertBytes = _clientCertificate?.RawData ?? [];
+
+            var req = new CreateSessionRequest
+            {
+                RequestHeader = new RequestHeader
+                {
+                    AuthenticationToken = _authenticationToken,
+                    Timestamp = DateTime.UtcNow,
+                    RequestHandle = ++_requestId
+                },
+                ClientDescription = new ClientDescription
+                {
+                    ApplicationUri = applicationUri,
+                    ProductUri = productUri,
+                    ApplicationName = new LocalizedText { Text = sessionName },
+                    Type = ApplicationType.Client,
+                    DiscoveryUrls = []
+                },
+
+                ServerUri = null,
+                EndpointUrl = _endpointUrl,
+                SessionName = sessionName,
+                ClientNonce = _sessionClientNonce,
+                ClientCertificate = clientCertBytes,
+                RequestedSessionTimeout = 60000,
+                MaxResponseMessageSize = 0
+            };
+
+            var response = await SendRequestAsync<CreateSessionRequest, CreateSessionResponse>(req);
+
+            _authenticationToken = response.AuthenticationToken ?? new NodeId(0,0);
+            _sessionServerNonce = response.ServerNonce;
+
+            /// TODO: Validate server certificate
+        }
+
+        public async Task ActivateSessionAsync(IUserIdentity identity, CancellationToken cancellationToken = default)
+        {
+            if (identity == null) throw new ArgumentNullException(nameof(identity));
+
+            ExtensionObject userTokenExt = identity.ToExtensionObject(_serverCertificate, _sessionServerNonce);
+
+            var clientSignature = new SignatureData();
+
+            if (_securityMode != MessageSecurityMode.None && _clientCertificate != null)
+            {
+                /// TODO: support other signature algorithms based on security policy
+                clientSignature.Algorithm = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
+
+                if (_sessionServerNonce == null || _sessionServerNonce.Length == 0)
+                    throw new InvalidOperationException("Cannot sign ActivateSession: No ServerNonce available.");
+
+                byte[] serverCertBytes = _serverCertificate?.RawData ?? [];
+                byte[] dataToSign = new byte[serverCertBytes.Length + _sessionServerNonce.Length];
+
+                Array.Copy(serverCertBytes, 0, dataToSign, 0, serverCertBytes.Length);
+                Array.Copy(_sessionServerNonce, 0, dataToSign, serverCertBytes.Length, _sessionServerNonce.Length);
+
+                clientSignature.Signature = _securityPolicy.Sign(dataToSign);
+            }
+            else
+            {
+                clientSignature.Algorithm = null;
+                clientSignature.Signature = null;
+            }
+
+            var req = new ActivateSessionRequest
+            {
+                RequestHeader = CreateRequestHeader(),
+                ClientSignature = clientSignature,
+                LocaleIds = ["en-US"],
+                UserIdentityToken = userTokenExt,
+                UserTokenSignature = new SignatureData()
+            };
+
+            var response = await SendRequestAsync<ActivateSessionRequest, ActivateSessionResponse>(req);
+
+            if (response.ServerNonce != null && response.ServerNonce.Length > 0)
+                _sessionServerNonce = response.ServerNonce;
+        }
+
+        public async Task<DataValue[]?> ReadAsync(NodeId[] nodesToRead, CancellationToken cancellationToken = default)
+        {
+            // build request
+            var readValues = new ReadValueId[nodesToRead.Length];
+            for (int i = 0; i < nodesToRead.Length; i++)
+            {
+                readValues[i] = new ReadValueId(nodesToRead[i])
+                {
+                    AttributeId = 13 // Value
+                };
+            }
+
+            var req = new ReadRequest
+            {
+                RequestHeader = CreateRequestHeader(),
+                NodesToRead = readValues,
+                TimestampsToReturn = TimestampsToReturn.Both,
+                MaxAge = 0
+            };
+
+            var response = await SendRequestAsync<ReadRequest, ReadResponse>(req);
+
+            return response.Results;
+        }
+
+        public async Task<StatusCode[]?> WriteAsync(NodeId[] nodes, DataValue[] values, CancellationToken cancellationToken = default)
+        {
+            if (nodes.Length != values.Length) throw new ArgumentException("Nodes and Values count mismatch");
+
+            var writeValues = new WriteValue[nodes.Length];
+            for (int i = 0; i < nodes.Length; i++)
+            {
+                writeValues[i] = new WriteValue(nodes[i], values[i])
+                {
+                    AttributeId = 13, // Value
+                };
+            }
+
+            var req = new WriteRequest
+            {
+                RequestHeader = new RequestHeader
+                {
+                    AuthenticationToken = _authenticationToken,
+                    Timestamp = DateTime.UtcNow,
+                    RequestHandle = ++_requestId
+                },
+                NodesToWrite = writeValues
+            };
+
+            var response = await SendRequestAsync<WriteRequest, WriteResponse>(req);
+            return response.Results;
+        }
+
+        public async Task<ReferenceDescription[]?> BrowseAsync(NodeId nodeId, CancellationToken cancellationToken = default)
+        {
+            var req = new BrowseRequest
+            {
+                RequestHeader = new RequestHeader { AuthenticationToken = _authenticationToken, Timestamp = DateTime.UtcNow, RequestHandle = ++_requestId },
+                NodesToBrowse =
+                [
+                    new BrowseDescription(nodeId)
+                    {
+                        BrowseDirection = BrowseDirection.Forward,
+                        IncludeSubtypes = true,
+                        NodeClassMask = 0,
+                        ResultMask = 63 // All
+                    }
+                ],
+                RequestedMaxReferencesPerNode = 0 // All
+            };
+
+            var response = await SendRequestAsync<BrowseRequest, BrowseResponse>(req);
+
+            if (response.Results != null && response.Results.Length > 0)
+            {
+                return response.Results[0].References;
+            }
+            return [];
+        }
+
+        public async Task<Variant[]> CallAsync(NodeId objectId, NodeId methodId, CancellationToken cancellationToken = default, params Variant[] inputArguments)
+        {
+            var req = new CallRequest(
+                [
+                    new CallMethodRequest(objectId, methodId, inputArguments)
+                ])
+            {
+                RequestHeader = CreateRequestHeader()
+            };
+
+            var response = await SendRequestAsync<CallRequest, CallResponse>(req);
+
+            if (response.Results == null || response.Results.Length == 0)
+                throw new Exception("Empty Call Result");
+
+            var result = response.Results[0];
+
+            if (result is CallMethodResponse res)
+            {
+                if (!res.StatusCode.IsGood)
+                {
+                    throw new Exception($"Method Call Failed: {res.StatusCode}");
+                }
+                else
+                {
+                    return res.OutputArguments ?? [];
+                }
+            }
+            else
+            {
+                throw new Exception($"Method Call Failed.");
+            }
+        }
+
+        private async Task RenewSecureChannelAsync()
+        {
+            if (_stream == null)
+                throw new InvalidOperationException("Not connected to server.");
+
+            await _lock.WaitAsync();
+            try
+            {
+                _clientNonce = new byte[32];
+                using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+                    rng.GetBytes(_clientNonce);
+
+                var request = new OpenSecureChannelRequest
+                {
+                    RequestHeader = CreateRequestHeader(),
+                    ClientProtocolVersion = 0,
+                    RequestType = SecurityTokenRequestType.Renew,
+                    SecurityMode = _securityMode,
+                    ClientNonce = _clientNonce,
+                    RequestedLifetime = 3600000
+                };
+
+
+                // 1. Body Encoding
+                byte[] bodyBytes;
+                using (var msBody = new MemoryStream())
+                {
+                    var writerBody = new OpcUaBinaryWriter(msBody);
+                    request.Encode(writerBody);
+                    bodyBytes = msBody.ToArray();
+                }
+
+                // 2. Security Header (Asymmetric)
+                byte[]? senderCertData = null;
+                byte[]? receiverThumbprint = null;
+                if (_securityMode != MessageSecurityMode.None)
+                {
+                    senderCertData = _clientCertificate?.RawData;
+                    receiverThumbprint = _serverCertificate?.GetCertHash();
+                }
+
+                var securityHeader = new AsymmetricAlgorithmSecurityHeader
+                {
+                    SecurityPolicyUri = _securityPolicy.SecurityPolicyUri,
+                    SenderCertificate = senderCertData,
+                    ReceiverCertificateThumbprint = receiverThumbprint
+                };
+
+                byte[] securityHeaderBytes;
+                using (var msh = new MemoryStream())
+                {
+                    var wh = new OpcUaBinaryWriter(msh);
+                    securityHeader.Encode(wh);
+                    securityHeaderBytes = msh.ToArray();
+                }
+
+                // 3. Sequence Header
+                var sequenceHeader = new SequenceHeader { SequenceNumber = _sequenceNumber++, RequestId = _requestId };
+
+                // 4. Padding Calculation
+                int plainContentSize = 8 + bodyBytes.Length;
+                int signatureSize = _securityPolicy.AsymmetricSignatureSize;
+                int inputBlockSize = _securityPolicy.AsymmetricEncryptionBlockSize;
+                int outputBlockSize = _securityPolicy.AsymmetricCipherTextBlockSize;
+
+                int paddingSize = PaddingCalculator.CalculatePaddingSize(plainContentSize, signatureSize, inputBlockSize);
+                int totalPlainTextSize = plainContentSize + paddingSize + signatureSize;
+
+                int chunks = totalPlainTextSize / inputBlockSize;
+                int encryptedDataSize = chunks * outputBlockSize;
+                int finalMessageSize = 12 + securityHeaderBytes.Length + encryptedDataSize;
+
+                // 5. Buffer Construction & Encryption
+                byte[] plainTextBlob = new byte[totalPlainTextSize];
+                using (var msPlain = new MemoryStream(plainTextBlob))
+                {
+                    var wPlain = new OpcUaBinaryWriter(msPlain);
+                    sequenceHeader.Encode(wPlain);
+                    wPlain.WriteBytes(bodyBytes);
+                    if (paddingSize > 0)
+                    {
+                        byte paddingByte = (byte)(paddingSize - 1);
+                        for (int i = 0; i < paddingSize; i++) wPlain.WriteByte(paddingByte);
+                    }
+                    // Sig placeholder skip
+                }
+
+                var msgHeader = new SecureConversationMessageHeader
+                {
+                    MessageType = "OPN",
+                    ChunkType = 'F',
+                    MessageSize = (uint)finalMessageSize,
+                    SecureChannelId = SecureChannelId
+                };
+
+                byte[] headerBytes;
+                using (var msH = new MemoryStream())
+                {
+                    var wH = new OpcUaBinaryWriter(msH);
+                    msgHeader.Encode(wH);
+                    headerBytes = msH.ToArray();
+                }
+
+                // Sign & Encrypt Logic
+                if (signatureSize > 0)
+                {
+                    int bytesToSignLen = headerBytes.Length + securityHeaderBytes.Length + (totalPlainTextSize - signatureSize);
+                    byte[] dataToSign = new byte[bytesToSignLen];
+                    int offset = 0;
+                    Array.Copy(headerBytes, 0, dataToSign, offset, headerBytes.Length); offset += headerBytes.Length;
+                    Array.Copy(securityHeaderBytes, 0, dataToSign, offset, securityHeaderBytes.Length); offset += securityHeaderBytes.Length;
+                    Array.Copy(plainTextBlob, 0, dataToSign, offset, totalPlainTextSize - signatureSize);
+
+                    byte[] signature = _securityPolicy.Sign(dataToSign);
+                    Array.Copy(signature, 0, plainTextBlob, totalPlainTextSize - signatureSize, signatureSize);
+                }
+
+                byte[] encryptedBlob = _securityPolicy.EncryptAsymmetric(plainTextBlob);
+
+                // Senden
+                using (var msFinal = new MemoryStream())
+                {
+                    var wFinal = new OpcUaBinaryWriter(msFinal);
+                    wFinal.WriteBytes(headerBytes);
+                    wFinal.WriteBytes(securityHeaderBytes);
+                    wFinal.WriteBytes(encryptedBlob);
+                    byte[] packet = msFinal.ToArray();
+                    await _stream.WriteAsync(packet);
+                }
+
+                await ReceiveOpenSecureChannelResponse();
+            }
+            finally
+            {
+                _lock.Release();
+            }
+        }
+
+        private void StartRenewalLoop(uint lifetimeMs)
+        {
+            // kill old loop
+            _renewCts?.Cancel();
+            _renewCts = new CancellationTokenSource();
+
+            // if lifetime is 0, set default 1 hour
+            if (lifetimeMs == 0) lifetimeMs = 3600000;
+
+            // renew after 75% of lifetime
+            int delayMs = (int)(lifetimeMs * 0.75);
+
+            _renewTask = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(delayMs, _renewCts.Token);
+                    if (!_renewCts.IsCancellationRequested)
+                    {
+                        // Console.WriteLine($"Renewing Secure Channel (Lifetime: {lifetimeMs}ms)...");
+                        await RenewSecureChannelAsync();
+                    }
+                }
+                catch (TaskCanceledException) { }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"FATAL: Channel Renewal failed: {ex.Message}");
+                    /// TODO: Disconnect? Handle...
+                }
+            }, _renewCts.Token);
+        }
+
+        private async Task PerformHandshakeAsync(string url)
+        {
+            if (_stream == null)
+                throw new InvalidOperationException("Not connected to server.");
+
+            var hello = new TcpHelloMessage(url);
+
+            byte[] sendBuffer;
+            using (var ms = new MemoryStream())
+            {
+                var writer = new OpcUaBinaryWriter(ms);
+                hello.Encode(writer);
+                sendBuffer = ms.ToArray();
+            }
+
+            await _stream.WriteAsync(sendBuffer);
+
+            byte[] headerBuffer = new byte[8];
+            await ReadExactAsync(_stream, headerBuffer, 8);
+
+            using var msHeader = new MemoryStream(headerBuffer);
+            var reader = new OpcUaBinaryReader(msHeader);
+            uint type = reader.ReadUInt32(); // HELF / ACKF etc.
+            uint length = reader.ReadUInt32();
+
+            if (length < 8) throw new Exception("Invalid Message Size");
+            uint bodyLength = length - 8;
+
+            byte[] bodyBuffer = new byte[bodyLength];
+            await ReadExactAsync(_stream, bodyBuffer, (int)bodyLength);
+
+            using var msBody = new MemoryStream(bodyBuffer);
+            var bodyReader = new OpcUaBinaryReader(msBody);
+            msHeader.Position = 0;
+            byte b1 = (byte)msHeader.ReadByte();
+            byte b2 = (byte)msHeader.ReadByte();
+            byte b3 = (byte)msHeader.ReadByte();
+
+            if (b1 == 'A' && b2 == 'C' && b3 == 'K')
+            {
+                var ack = new TcpAcknowledgeMessage();
+                ack.Decode(bodyReader);
+
+                this.SendBufferSize = ack.SendBufferSize;
+                this.ReceiveBufferSize = ack.ReceiveBufferSize;
+                this.MaxMessageSize = ack.MaxMessageSize;
+                this.MaxChunkCount = ack.MaxChunkCount;
+            }
+            else if (b1 == 'E' && b2 == 'R' && b3 == 'R')
+            {
+                var err = new TcpErrorMessage();
+                err.Decode(bodyReader);
+                throw new Exception($"OPC UA Connection Error: {err.Reason} (0x{err.ErrorCode:X8})");
+            }
+            else
+            {
+                throw new Exception("Unknown Message Type during Handshake");
+            }
+        }
+
+        private async Task OpenSecureChannelAsync()
+        {
+            if (_stream == null)
+                throw new InvalidOperationException("Not connected to server.");
+
+            var request = new OpenSecureChannelRequest
+            {
+                RequestHeader = new RequestHeader
+                {
+                    RequestHandle = ++_requestId,
+                    Timestamp = DateTime.UtcNow,
+                    TimeoutHint = 10000,
+                    AuthenticationToken = _authenticationToken
+                },
+                ClientProtocolVersion = 0,
+                RequestType = SecurityTokenRequestType.Issue,
+                SecurityMode = _securityMode,
+                ClientNonce = _clientNonce,
+                RequestedLifetime = 3600000
+            };
+
+            byte[] bodyBytes;
+            using (var msBody = new MemoryStream())
+            {
+                var writerBody = new OpcUaBinaryWriter(msBody);
+                request.Encode(writerBody);
+                bodyBytes = msBody.ToArray();
+            }
+
+            byte[]? senderCertData = null;
+            byte[]? receiverThumbprint = null;
+
+            if (_securityMode != MessageSecurityMode.None)
+            {
+                senderCertData = _clientCertificate?.RawData;
+                receiverThumbprint = _serverCertificate?.GetCertHash(); // SHA1 Hash
+            }
+
+            var securityHeader = new AsymmetricAlgorithmSecurityHeader
+            {
+                SecurityPolicyUri = _securityPolicy.SecurityPolicyUri,
+                SenderCertificate = senderCertData,
+                ReceiverCertificateThumbprint = receiverThumbprint
+            };
+
+            byte[] securityHeaderBytes;
+            using (var msh = new MemoryStream())
+            {
+                var wh = new OpcUaBinaryWriter(msh);
+                securityHeader.Encode(wh);
+                securityHeaderBytes = msh.ToArray();
+            }
+
+            var sequenceHeader = new SequenceHeader
+            {
+                SequenceNumber = _sequenceNumber++,
+                RequestId = _requestId
+            };
+
+            // Plaintext to Encrypt = SequenceHeader(8) + Body + Padding + Signature
+
+            int plainContentSize = 8 + bodyBytes.Length; // Sequence + Body
+            int signatureSize = _securityPolicy.AsymmetricSignatureSize;
+            int inputBlockSize = _securityPolicy.AsymmetricEncryptionBlockSize; // z.B. 214 wtih RSA 2048 Basic256Sha256
+            int outputBlockSize = _securityPolicy.AsymmetricCipherTextBlockSize; // z.B. 256 with RSA 2048
+
+            int paddingSize = PaddingCalculator.CalculatePaddingSize(plainContentSize, signatureSize, inputBlockSize);
+
+            int totalPlainTextSize = plainContentSize + paddingSize + signatureSize;
+
+            if (totalPlainTextSize % inputBlockSize != 0)
+                throw new Exception("Padding calculation failed. PlainText size is not multiple of BlockSize.");
+
+            int chunks = totalPlainTextSize / inputBlockSize;
+            int encryptedDataSize = chunks * outputBlockSize;
+
+            int finalMessageSize = 12 + securityHeaderBytes.Length + encryptedDataSize;
+
+            byte[] plainTextBlob = new byte[totalPlainTextSize];
+            using (var msPlain = new MemoryStream(plainTextBlob))
+            {
+                var wPlain = new OpcUaBinaryWriter(msPlain);
+                // Sequence Header
+                sequenceHeader.Encode(wPlain);
+                // Body
+                wPlain.WriteBytes(bodyBytes);
+                // Padding
+                if (paddingSize > 0)
+                {
+                    byte paddingByte = (byte)(paddingSize - 1);
+                    for (int i = 0; i < paddingSize; i++) wPlain.WriteByte(paddingByte);
+                }
+                // Signature (placeholder)
+                // save position
+                long sigPos = wPlain.Position;
+                if (signatureSize > 0) wPlain.WriteBytes(new byte[signatureSize]);
+            }
+
+            var msgHeader = new SecureConversationMessageHeader
+            {
+                MessageType = "OPN",
+                ChunkType = 'F',
+                MessageSize = (uint)finalMessageSize,
+                SecureChannelId = SecureChannelId
+            };
+
+            byte[] headerBytes;
+            using (var msH = new MemoryStream())
+            {
+                var wH = new OpcUaBinaryWriter(msH);
+                msgHeader.Encode(wH);
+                headerBytes = msH.ToArray();
+            }
+
+            if (signatureSize > 0)
+            {
+                // [Header] + [SecurityHeader] + [PlainTextBlob (without Sig)]
+
+                int bytesToSignLen = headerBytes.Length + securityHeaderBytes.Length + (totalPlainTextSize - signatureSize);
+                byte[] dataToSign = new byte[bytesToSignLen];
+
+                int offset = 0;
+                Array.Copy(headerBytes, 0, dataToSign, offset, headerBytes.Length); offset += headerBytes.Length;
+                Array.Copy(securityHeaderBytes, 0, dataToSign, offset, securityHeaderBytes.Length); offset += securityHeaderBytes.Length;
+                // Plaintext blob minus signature placeholder
+                Array.Copy(plainTextBlob, 0, dataToSign, offset, totalPlainTextSize - signatureSize);
+
+                // sign
+                byte[] signature = _securityPolicy.Sign(dataToSign);
+
+                // copy signature into plainTextBlob
+                Array.Copy(signature, 0, plainTextBlob, totalPlainTextSize - signatureSize, signatureSize);
+            }
+
+            byte[] encryptedBlob = _securityPolicy.EncryptAsymmetric(plainTextBlob);
+
+            if (encryptedBlob.Length != encryptedDataSize)
+                throw new Exception($"Encryption size mismatch. Expected {encryptedDataSize}, got {encryptedBlob.Length}");
+
+            using (var msFinal = new MemoryStream())
+            {
+                var wFinal = new OpcUaBinaryWriter(msFinal);
+                wFinal.WriteBytes(headerBytes);
+                wFinal.WriteBytes(securityHeaderBytes);
+                wFinal.WriteBytes(encryptedBlob);
+
+                byte[] packet = msFinal.ToArray();
+                await _stream.WriteAsync(packet);
+            }
+
+            await ReceiveOpenSecureChannelResponse();
+        }
+
+        private async Task ReceiveOpenSecureChannelResponse()
+        {
+            if (_stream == null)
+                throw new InvalidOperationException("Not connected to server.");
+
+            byte[] headerBase = new byte[8];
+            await ReadExactAsync(_stream, headerBase, 8);
+
+            string msgType;
+            uint msgSize;
+
+            using (var msH = new MemoryStream(headerBase))
+            {
+                var rH = new OpcUaBinaryReader(msH);
+                msgType = new string([(char)rH.ReadByte(), (char)rH.ReadByte(), (char)rH.ReadByte()]);
+                char chunkType = (char)rH.ReadByte();
+                msgSize = rH.ReadUInt32();
+            }
+
+            if (msgType == "ERR")
+            {
+                int errLen = (int)(msgSize - 8);
+                byte[] errBody = new byte[errLen];
+                await ReadExactAsync(_stream, errBody, errLen);
+
+                using var msErr = new MemoryStream(errBody);
+                var rErr = new OpcUaBinaryReader(msErr);
+                var err = new TcpErrorMessage();
+                err.Decode(rErr);
+                throw new Exception($"OPC UA Error: {err.Reason} (0x{err.ErrorCode:X8})");
+            }
+
+            if (msgType != "OPN") throw new Exception($"Expected OPN, got {msgType}");
+
+            byte[] channelIdBuf = new byte[4];
+            await ReadExactAsync(_stream, channelIdBuf, 4);
+
+            SecureChannelId = BitConverter.ToUInt32(channelIdBuf, 0);
+
+            // Body Size = Total Size - 12 Bytes Header (8 Base + 4 ChannelId)
+            int bodyLen = (int)(msgSize - 12);
+            byte[] rawBody = new byte[bodyLen];
+            await ReadExactAsync(_stream, rawBody, bodyLen);
+
+            using var msRaw = new MemoryStream(rawBody);
+            var rRaw = new OpcUaBinaryReader(msRaw);
+            long startPos = msRaw.Position;
+            var secHeader = new AsymmetricAlgorithmSecurityHeader
+            {
+                SecurityPolicyUri = rRaw.ReadString(),
+                SenderCertificate = rRaw.ReadByteString(),
+                ReceiverCertificateThumbprint = rRaw.ReadByteString()
+            };
+            long endHeaderPos = msRaw.Position;
+
+            int secHeaderLen = (int)(endHeaderPos - startPos);
+            byte[] secHeaderBytes = new byte[secHeaderLen];
+            Array.Copy(rawBody, startPos, secHeaderBytes, 0, secHeaderLen);
+
+            byte[] decryptedPayload;
+
+            if (_securityMode != MessageSecurityMode.None)
+            {
+                int encryptedLen = (int)(msRaw.Length - endHeaderPos);
+                byte[] encryptedData = new byte[encryptedLen];
+                Array.Copy(rawBody, endHeaderPos, encryptedData, 0, encryptedLen);
+
+                byte[] plainBlock = _securityPolicy.DecryptAsymmetric(encryptedData);
+
+                int sigSize = _securityPolicy.AsymmetricSignatureSize;
+                int dataLen = plainBlock.Length - sigSize;
+                byte[] signature = new byte[sigSize];
+                Array.Copy(plainBlock, dataLen, signature, 0, sigSize);
+
+                // [BaseHeader(8)] + [ChannelId(4)] + [SecHeader] + [PlainBlockWithoutSig]
+                int signedDataLen = 8 + 4 + secHeaderBytes.Length + dataLen;
+                byte[] signedData = new byte[signedDataLen];
+                int off = 0;
+                Array.Copy(headerBase, 0, signedData, off, 8); off += 8;
+                Array.Copy(channelIdBuf, 0, signedData, off, 4); off += 4;
+                Array.Copy(secHeaderBytes, 0, signedData, off, secHeaderBytes.Length); off += secHeaderBytes.Length;
+                Array.Copy(plainBlock, 0, signedData, off, dataLen);
+
+                if (!_securityPolicy.Verify(signedData, signature))
+                    throw new Exception("Signature Verification Failed");
+
+                byte paddingByte = plainBlock[dataLen - 1];
+                int paddingSize = paddingByte + 1;
+                int cleanPayloadLen = dataLen - paddingSize;
+                decryptedPayload = new byte[cleanPayloadLen];
+                Array.Copy(plainBlock, 0, decryptedPayload, 0, cleanPayloadLen);
+            }
+            else
+            {
+                int restLen = (int)(msRaw.Length - endHeaderPos);
+                decryptedPayload = new byte[restLen];
+                Array.Copy(rawBody, endHeaderPos, decryptedPayload, 0, restLen);
+            }
+
+            // 6. Body Deserialisieren
+            using var msDec = new MemoryStream(decryptedPayload);
+            var rDec = new OpcUaBinaryReader(msDec);
+            var seqHeader = new SequenceHeader
+            {
+                SequenceNumber = rDec.ReadUInt32(),
+                RequestId = rDec.ReadUInt32()
+            };
+
+            NodeId typeId = NodeId.Decode(rDec);
+            if (typeId.NumericIdentifier != 449) throw new Exception($"Expected OpenSecureChannelResponse (449), got {typeId.NumericIdentifier}");
+
+            var response = new OpenSecureChannelResponse();
+            response.Decode(rDec);
+
+            if (response.ResponseHeader?.ServiceResult != 0)
+                throw new Exception($"OpenSecureChannel ServiceResult: 0x{response.ResponseHeader?.ServiceResult:X8}");
+
+            if (response.SecurityToken == null)
+                throw new InvalidDataException("OpenSecureChannelResponse has no SecurityToken.");
+
+            _tokenId = response.SecurityToken.TokenId;
+
+            if (response.ServerNonce != null && _clientNonce != null)
+            {
+                _securityPolicy.DeriveKeys(_clientNonce, response.ServerNonce);
+            }
+
+            StartRenewalLoop(response.SecurityToken.RevisedLifetime);
+        }
+
+        public async Task<TResponse> SendRequestAsync<TRequest, TResponse>(TRequest request)
+            where TResponse : new()
+        {
+            if (_stream == null)
+                throw new InvalidOperationException("Not connected to server.");
+
+            await _lock.WaitAsync();
+            try
+            {
+                byte[] bodyBytes;
+                using (var ms = new MemoryStream())
+                {
+                    var w = new OpcUaBinaryWriter(ms);
+                    if (request is GetEndpointsRequest ge) ge.Encode(w);
+                    else if (request is CreateSessionRequest cs) cs.Encode(w);
+                    else if (request is ActivateSessionRequest asr) asr.Encode(w);
+                    else if (request is ReadRequest rr) rr.Encode(w);
+                    else if (request is WriteRequest wr) wr.Encode(w);
+                    else if (request is BrowseRequest br) br.Encode(w);
+                    else if (request is CreateSubscriptionRequest csr) csr.Encode(w);
+                    else if (request is CreateMonitoredItemsRequest cmir) cmir.Encode(w);
+                    else if (request is PublishRequest pr) pr.Encode(w);
+                    else if (request is CloseSessionRequest csr2) csr2.Encode(w);
+                    else if (request is CloseSecureChannelRequest cscr) cscr.Encode(w);
+                    else if (request is CallRequest cr) cr.Encode(w);
+                    else throw new NotImplementedException($"Request Type {typeof(TRequest).Name} not supported.");
+
+                    bodyBytes = ms.ToArray();
+                }
+
+                // Header from MSG:
+                // [SecureConversationMessageHeader (12)]
+                // [SymmetricSecurityHeader (4)] (TokenId)
+                // [SequenceHeader (8)]
+                // [Body]
+                // [Padding]
+                // [Signature]
+
+                int plainTextContentSize = 8 + bodyBytes.Length; // SequenceHeader + Body
+                int signatureSize = _securityPolicy.SymmetricSignatureSize; // HMAC size
+                int blockSize = _securityPolicy.SymmetricBlockSize; // CBC Block size
+
+                int paddingSize = PaddingCalculator.CalculatePaddingSize(plainTextContentSize, signatureSize, blockSize);
+
+                int totalSize = 12 + 4 + plainTextContentSize + paddingSize + signatureSize;
+
+                using (var msFinal = new MemoryStream(totalSize))
+                {
+                    var w = new OpcUaBinaryWriter(msFinal);
+                    // Header MSG
+                    var msgHeader = new SecureConversationMessageHeader
+                    {
+                        MessageType = "MSG",
+                        ChunkType = 'F',
+                        MessageSize = (uint)totalSize,
+                        SecureChannelId = SecureChannelId
+                    };
+                    msgHeader.Encode(w);
+
+                    // Symmetric Security Header (TokenId only)
+                    w.WriteUInt32(_tokenId);
+
+                    // Sequence Header (Start Encryption)
+                    long cryptoStart = msFinal.Position;
+                    var seqHeader = new SequenceHeader { SequenceNumber = _sequenceNumber++, RequestId = _requestId++ };
+                    seqHeader.Encode(w);
+
+                    // Body
+                    w.WriteBytes(bodyBytes);
+
+                    // Padding
+                    if (paddingSize > 0)
+                    {
+                        byte paddingByte = (byte)(paddingSize - 1);
+                        for (int i = 0; i < paddingSize; i++) w.WriteByte(paddingByte);
+                    }
+
+                    // Signature Platzhalter
+                    long sigPos = msFinal.Position;
+                    if (signatureSize > 0) w.WriteBytes(new byte[signatureSize]);
+
+                    // --- Crypto ---
+                    byte[] raw = msFinal.ToArray();
+
+                    // F. Sign (Header + Body + Padding)
+                    if (signatureSize > 0)
+                    {
+                        byte[] dataToSign = new byte[sigPos];
+                        Array.Copy(raw, 0, dataToSign, 0, sigPos);
+
+                        byte[] signature = _securityPolicy.SignSymmetric(dataToSign);
+
+                        if (signature.Length != signatureSize)
+                            throw new Exception("Symmetric Signature size mismatch");
+
+                        Array.Copy(signature, 0, raw, sigPos, signatureSize);
+                    }
+
+                    // G. Encryption
+                    // MsgHeader(12) + TokenId(4) = 16.
+                    int cryptoStartOffset = 16;
+                    int encryptLen = raw.Length - cryptoStartOffset;
+
+                    byte[] dataToEncrypt = new byte[encryptLen];
+                    Array.Copy(raw, cryptoStartOffset, dataToEncrypt, 0, encryptLen);
+
+                    byte[] encryptedData = _securityPolicy.EncryptSymmetric(dataToEncrypt);
+
+                    Array.Copy(encryptedData, 0, raw, cryptoStartOffset, encryptedData.Length);
+
+                    await _stream.WriteAsync(raw);
+                }
+
+                // 4. Response
+                return await ReceiveResponseAsync<TResponse>();
+            }
+            finally
+            {
+                _lock.Release();
+            }
+        }
+
+        private async Task<TResponse> ReceiveResponseAsync<TResponse>() where TResponse : new()
+        {
+            if (_stream == null)
+                throw new InvalidOperationException("Not connected to server.");
+
+            byte[] headerBase = new byte[8];
+            await ReadExactAsync(_stream, headerBase, 8);
+
+            string msgType;
+            uint msgSize;
+
+            using (var msH = new MemoryStream(headerBase))
+            {
+                var rH = new OpcUaBinaryReader(msH);
+                msgType = new string([(char)rH.ReadByte(), (char)rH.ReadByte(), (char)rH.ReadByte()]);
+                char chunkType = (char)rH.ReadByte();
+                msgSize = rH.ReadUInt32();
+            }
+
+            if (msgType == "ERR")
+            {
+                int errLen = (int)(msgSize - 8);
+                byte[] errBody = new byte[errLen];
+                await ReadExactAsync(_stream, errBody, errLen);
+
+                using var msErr = new MemoryStream(errBody);
+                var rErr = new OpcUaBinaryReader(msErr);
+                var err = new TcpErrorMessage();
+                err.Decode(rErr);
+                throw new Exception($"OPC UA Error: {err.Reason} (0x{err.ErrorCode:X8})");
+            }
+
+            if (msgType != "MSG") throw new Exception($"Expected MSG, got {msgType}");
+
+            byte[] channelIdBuf = new byte[4];
+            await ReadExactAsync(_stream, channelIdBuf, 4);
+            ///TODO: Check channel id
+
+            // Body Size = Total Size - 12 Bytes Header
+            int totalBodyLen = (int)(msgSize - 12);
+            byte[] fullBody = new byte[totalBodyLen];
+            await ReadExactAsync(_stream, fullBody, totalBodyLen);
+
+            byte[] decryptedBytes;
+
+            uint tokenId = BitConverter.ToUInt32(fullBody, 0);
+            int cryptoStartOffset = 4; // TokenId Size
+
+            if (_securityMode != MessageSecurityMode.None)
+            {
+                int encryptedLen = totalBodyLen - cryptoStartOffset;
+                byte[] cipherText = new byte[encryptedLen];
+                Array.Copy(fullBody, cryptoStartOffset, cipherText, 0, encryptedLen);
+
+                byte[] plainTextPart = _securityPolicy.DecryptSymmetric(cipherText);
+
+                int sigSize = _securityPolicy.SymmetricSignatureSize;
+                int dataLen = plainTextPart.Length - sigSize;
+                byte[] signature = new byte[sigSize];
+                Array.Copy(plainTextPart, dataLen, signature, 0, sigSize);
+
+                // [BaseHeader(8)] + [ChannelId(4)] + [TokenId(4)] + [PlainPartWithoutSig]
+                int signedDataLen = 8 + 4 + 4 + dataLen;
+                byte[] dataToVerify = new byte[signedDataLen];
+                int off = 0;
+                Array.Copy(headerBase, 0, dataToVerify, off, 8); off += 8;
+                Array.Copy(channelIdBuf, 0, dataToVerify, off, 4); off += 4;
+                Array.Copy(fullBody, 0, dataToVerify, off, 4); off += 4; // TokenId
+                Array.Copy(plainTextPart, 0, dataToVerify, off, dataLen);
+
+                if (!_securityPolicy.VerifySymmetric(dataToVerify, signature))
+                {
+                    throw new Exception("Symmetric Signature Verification Failed!");
+                }
+
+                byte paddingByte = plainTextPart[dataLen - 1];
+                int paddingSize = paddingByte + 1;
+                int cleanPayloadLen = dataLen - paddingSize;
+                decryptedBytes = new byte[cleanPayloadLen];
+                Array.Copy(plainTextPart, 0, decryptedBytes, 0, cleanPayloadLen);
+            }
+            else
+            {
+                // None: [TokenId] [Sequence] [Body]
+                int restLen = totalBodyLen - 4;
+                decryptedBytes = new byte[restLen];
+                Array.Copy(fullBody, 4, decryptedBytes, 0, restLen);
+            }
+
+            // 5. Deserialisieren
+            using var ms = new MemoryStream(decryptedBytes);
+            var r = new OpcUaBinaryReader(ms);
+            // Sequence Header
+            uint seqNum = r.ReadUInt32();
+            uint reqId = r.ReadUInt32();
+
+            // Body TypeId (NodeId)
+            NodeId typeId = NodeId.Decode(r);
+
+            // --- GLOBAL SERVICE FAULT CHECK ---
+            // ID 397 = ServiceFault
+            if (typeId.NumericIdentifier == 397)
+            {
+                var faultHeader = ResponseHeader.Decode(r);
+
+                throw new Exception($"Server returned ServiceFault: 0x{faultHeader.ServiceResult:X8}");
+            }
+            // ------------------------------------
+
+            var response = new TResponse();
+
+            if (response is GetEndpointsResponse ger)
+            {
+                if (typeId.NumericIdentifier != GetEndpointsResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for GetEndpoints: {typeId.NumericIdentifier}");
+                ger.Decode(r);
+            }
+            else if (response is CreateSessionResponse csr)
+            {
+                if (typeId.NumericIdentifier != CreateSessionResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for CreateSession: {typeId.NumericIdentifier}");
+                csr.Decode(r);
+            }
+            else if (response is ActivateSessionResponse asr)
+            {
+                if (typeId.NumericIdentifier != ActivateSessionResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for ActivateSession: {typeId.NumericIdentifier}");
+                asr.Decode(r);
+            }
+            else if (response is ReadResponse rr)
+            {
+                if (typeId.NumericIdentifier != ReadResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for ReadResponse: {typeId.NumericIdentifier}");
+                rr.Decode(r);
+            }
+            else if (response is WriteResponse wr)
+            {
+                if (typeId.NumericIdentifier != WriteResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for WriteResponse: {typeId.NumericIdentifier}");
+                wr.Decode(r);
+            }
+            else if (response is BrowseResponse br)
+            {
+                if (typeId.NumericIdentifier != BrowseResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for BrowseResponse: {typeId.NumericIdentifier}");
+                br.Decode(r);
+            }
+            else if (response is CreateSubscriptionResponse csr2)
+            {
+                if (typeId.NumericIdentifier != CreateSubscriptionResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for CreateSubscriptionResponse: {typeId.NumericIdentifier}");
+                csr2.Decode(r);
+            }
+            else if (response is CreateMonitoredItemsResponse cmir)
+            {
+                if (typeId.NumericIdentifier != CreateMonitoredItemsResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for CreateMonitoredItemResponse: {typeId.NumericIdentifier}");
+                cmir.Decode(r);
+            }
+            else if (response is PublishResponse pr)
+            {
+                if (typeId.NumericIdentifier != PublishResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for PublishResponse: {typeId.NumericIdentifier}");
+                pr.Decode(r);
+            }
+            else if (response is CloseSessionResponse csr3)
+            {
+                if (typeId.NumericIdentifier != CloseSessionResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for CloseSessionResponse: {typeId.NumericIdentifier}");
+                csr3.Decode(r);
+            }
+            else if (response is CloseSecureChannelResponse cscr)
+            {
+                if (typeId.NumericIdentifier != CloseSecureChannelResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for CloseSecureChannelResponse: {typeId.NumericIdentifier}");
+                cscr.Decode(r);
+            }
+            else if (response is CallResponse cr)
+            {
+                if (typeId.NumericIdentifier != CallResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for CallResponse: {typeId.NumericIdentifier}");
+                cr.Decode(r);
+            }
+            else
+            {
+                throw new NotImplementedException($"Response decoding for {typeof(TResponse).Name} not implemented.");
+            }
+
+            return response;
+        }
+
+        // Public API Method
+        public async Task<GetEndpointsResponse> GetEndpointsAsync()
+        {
+            var req = new GetEndpointsRequest
+            {
+                EndpointUrl = _endpointUrl,
+                RequestHeader = new RequestHeader
+                {
+                    AuthenticationToken = _authenticationToken,
+                    Timestamp = DateTime.UtcNow,
+                    RequestHandle = _requestId
+                }
+            };
+
+            return await SendRequestAsync<GetEndpointsRequest, GetEndpointsResponse>(req);
+        }
+
+        private static async Task<int> ReadExactAsync(NetworkStream stream, byte[] buffer, int count)
+        {
+            int totalRead = 0;
+            while (totalRead < count)
+            {
+                int read = await stream.ReadAsync(buffer.AsMemory(totalRead, count - totalRead));
+                if (read == 0) throw new EndOfStreamException("Connection closed by remote host.");
+                totalRead += read;
+            }
+            return totalRead;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await DisconnectAsync();
+            GC.SuppressFinalize(this);
+        }
+
+        public void Dispose()
+        {
+            _stream?.Dispose();
+            _client?.Dispose();
+            GC.SuppressFinalize(this);
+        }
+    }
+}

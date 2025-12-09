@@ -12,6 +12,6 @@ namespace LiteUa.Stack.Session.Identity
 
     public interface IUserIdentity
     {
-        ExtensionObject ToExtensionObject(X509Certificate2 serverCertificate, byte[] serverNonce);
+        ExtensionObject ToExtensionObject(X509Certificate2? serverCertificate, byte[]? serverNonce);
     }
 }
