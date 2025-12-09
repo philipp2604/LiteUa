@@ -15,7 +15,7 @@ namespace LiteUa.Stack.Attribute
 
     public class ReadResponse
     {
-        public static readonly NodeId NodeId = new(632);
+        public static readonly NodeId NodeId = new(634);
 
         public ResponseHeader? ResponseHeader { get; set; }
         public DataValue[]? Results { get; set; }

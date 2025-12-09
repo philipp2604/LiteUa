@@ -239,5 +239,101 @@ namespace LiteUa.Tests.IntegrationTests
                 Assert.NotEmpty(response.Endpoints);
             }
         }
+
+        [Fact]
+        public async Task Read_All_S7_Datatypes_Correctly()
+        {
+            var testConfigs = new (string Name, uint NodeId, BuiltInType Type, bool IsArray)[]
+            {
+                ("TestBool",        3, BuiltInType.Boolean, false),
+                ("TestBoolArray",   4, BuiltInType.Boolean, true),
+                ("TestByte",        8, BuiltInType.Byte,    false),
+                ("TestByteArray",   9, BuiltInType.Byte,    true),
+                ("TestChar",        13, BuiltInType.Byte,    false),
+                ("TestCharArray",   14, BuiltInType.Byte,    true),
+                ("TestDInt",        18, BuiltInType.Int32,   false),
+                ("TestDIntArray",   19, BuiltInType.Int32,   true),
+                ("TestDTL",         25, BuiltInType.ExtensionObject, false),
+                ("TestDTLArray",    34, BuiltInType.ExtensionObject, true),
+                ("TestDWord",       62, BuiltInType.UInt32,  false),
+                ("TestDWordArray",  63, BuiltInType.UInt32,  true),
+                ("TestDate",        67, BuiltInType.UInt16,  false),
+                ("TestDateArray",   68, BuiltInType.UInt16,  true),
+                ("TestInt",         72, BuiltInType.Int16,   false),
+                ("TestIntArray",    73, BuiltInType.Int16,   true),
+                ("TestLReal",       77, BuiltInType.Double,  false),
+                ("TestLRealArray",  78, BuiltInType.Double,  true),
+                ("TestReal",        82, BuiltInType.Float,   false),
+                ("TestRealArray",   83, BuiltInType.Float,   true),
+                ("TestSInt",        87, BuiltInType.SByte,   false),
+                ("TestSIntArray",   88, BuiltInType.SByte,   true),
+                ("TestString",      92, BuiltInType.String,  false),
+                ("TestStringArray", 93, BuiltInType.String,  true),
+                ("TestStruct",      99, BuiltInType.ExtensionObject, false),
+                ("TestStructArray", 105, BuiltInType.ExtensionObject, true),
+                ("TestTime",        118, BuiltInType.Int32,   false),
+                ("TestTimeArray",   119, BuiltInType.Int32,   true),
+                ("TestTimeOfDay",   123, BuiltInType.UInt32,  false),
+                ("TestTimeOfDayArray", 124, BuiltInType.UInt32, true),
+                ("TestUDInt",       128, BuiltInType.UInt32,  false),
+                ("TestUDIntArray",  129, BuiltInType.UInt32,  true),
+                ("TestUInt",        133, BuiltInType.UInt16,  false),
+                ("TestUIntArray",   134, BuiltInType.UInt16,  true),
+                ("TestUSInt",       138, BuiltInType.Byte,    false),
+                ("TestUSIntArray",  139, BuiltInType.Byte,    true),
+                ("TestWChar",       143, BuiltInType.UInt16,  false),
+                ("TestWCharArray",  144, BuiltInType.UInt16,  true),
+                ("TestWString",     148, BuiltInType.String,  false),
+                ("TestWStringArray",149, BuiltInType.String,  true),
+                ("TestWord",        153, BuiltInType.UInt16,  false),
+                ("TestWordArray",   154, BuiltInType.UInt16,  true),
+            };
+
+            var nodesToRead = new NodeId[testConfigs.Length];
+            for (int i = 0; i < testConfigs.Length; i++)
+            {
+                nodesToRead[i] = new NodeId(4, testConfigs[i].NodeId);
+            }
+
+            await using (var client = new UaTcpClientChannel(TestServerUrl))
+            {
+                await client.ConnectAsync(default);
+                await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "S7BulkRead");
+                await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+
+                var results = await client.ReadAsync(nodesToRead);
+
+                Assert.NotNull(results);
+                Assert.NotEmpty(results);
+                Assert.Equal(testConfigs.Length, results.Length);
+
+                for (int i = 0; i < results.Length; i++)
+                {
+                    var result = results[i];
+                    var config = testConfigs[i];
+
+                    if (!result.StatusCode.IsGood)
+                    {
+                        throw new Exception($"Bad StatusCode for {config.Name}: {result.StatusCode}");
+                    }
+
+                    if (result.Value?.Type != config.Type)
+                    {
+                        throw new Exception($"Type Mismatch for {config.Name}. Expected {config.Type}, Got {result.Value?.Type}");
+                    }
+
+                    if (result.Value.IsArray != config.IsArray)
+                    {
+                        throw new Exception($"Array Flag Mismatch for {config.Name}. Expected {config.IsArray}, Got {result.Value.IsArray}");
+                    }
+
+                    if (config.IsArray)
+                    {
+                        var arr = result.Value.Value as Array;
+                        Assert.Equal(3, arr?.Length);
+                    }
+                }
+            }
+        }
     }
 }
