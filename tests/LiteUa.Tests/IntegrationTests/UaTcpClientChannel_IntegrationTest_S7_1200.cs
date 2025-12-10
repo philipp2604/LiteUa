@@ -690,6 +690,23 @@ namespace LiteUa.Tests.IntegrationTests
             Assert.Equal(30, result.Result);
         }
 
+        [Fact]
+        public async Task Browse_With_Paging()
+        {
+            using (var client = new UaTcpClientChannel(TestServerUrl))
+            {
+                await client.ConnectAsync();
+                await client.CreateSessionAsync("urn:test", "urn:test", "BrowseNext");
+                await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+
+                var refs = await client.BrowseAsync(new NodeId(0, 2253), maxRefs: 2);
+
+                Assert.NotNull(refs);
+                Assert.NotEmpty(refs);
+                Assert.True(refs.Length > 2);
+            }
+        }
+
         #region Helper classes
         private class AddInput
         {

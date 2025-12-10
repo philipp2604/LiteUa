@@ -300,8 +300,11 @@ namespace LiteUa.Transport
             return response.Results;
         }
 
-        public async Task<ReferenceDescription[]?> BrowseAsync(NodeId nodeId, CancellationToken cancellationToken = default)
+        public async Task<ReferenceDescription[]?> BrowseAsync(NodeId nodeId, uint maxRefs = 0, CancellationToken cancellationToken = default)
         {
+            var references = new List<ReferenceDescription>();
+
+            // 1. Initial request
             var req = new BrowseRequest
             {
                 RequestHeader = CreateRequestHeader(),
@@ -312,19 +315,49 @@ namespace LiteUa.Transport
                         BrowseDirection = BrowseDirection.Forward,
                         IncludeSubtypes = true,
                         NodeClassMask = 0,
-                        ResultMask = 63 // All
+                        ResultMask = 63
                     }
                 ],
-                RequestedMaxReferencesPerNode = 0 // All
+                RequestedMaxReferencesPerNode = 2
             };
 
             var response = await SendRequestAsync<BrowseRequest, BrowseResponse>(req, cancellationToken);
 
-            if (response.Results != null && response.Results.Length > 0)
+            if (response.Results == null || response.Results.Length == 0) return [];
+
+            var result = response.Results[0]; // only browsed 1 node
+
+            if (result.References != null) references.AddRange(result.References);
+
+            // 2. Continuation Point Loop
+            byte[]? continuationPoint = result.ContinuationPoint;
+
+            while (continuationPoint != null && continuationPoint.Length > 0)
             {
-                return response.Results[0].References;
+                var nextReq = new BrowseNextRequest
+                {
+                    RequestHeader = CreateRequestHeader(),
+                    ReleaseContinuationPoints = false,
+                    ContinuationPoints = [continuationPoint]
+                };
+
+                var nextResp = await SendRequestAsync<BrowseNextRequest, BrowseNextResponse>(nextReq, cancellationToken);
+
+                if (nextResp.Results != null && nextResp.Results.Length > 0)
+                {
+                    var nextResult = nextResp.Results[0];
+                    if (nextResult.References != null) references.AddRange(nextResult.References);
+
+                    // Update Continuation Point
+                    continuationPoint = nextResult.ContinuationPoint;
+                }
+                else
+                {
+                    break; // Should not happen
+                }
             }
-            return [];
+
+            return [.. references];
         }
 
         public async Task<Variant[]> CallAsync(NodeId objectId, NodeId methodId, CancellationToken cancellationToken = default, params Variant[] inputArguments)
@@ -900,6 +933,7 @@ namespace LiteUa.Transport
                     else if (request is CloseSessionRequest csr2) csr2.Encode(w);
                     else if (request is CloseSecureChannelRequest cscr) cscr.Encode(w);
                     else if (request is CallRequest cr) cr.Encode(w);
+                    else if (request is BrowseNextRequest bcr) bcr.Encode(w);
                     else throw new NotImplementedException($"Request Type {typeof(TRequest).Name} not supported.");
 
                     bodyBytes = ms.ToArray();
@@ -1179,6 +1213,12 @@ namespace LiteUa.Transport
                 if (typeId.NumericIdentifier != CallResponse.NodeId.NumericIdentifier)
                     throw new Exception($"Unexpected Response Type for CallResponse: {typeId.NumericIdentifier}");
                 cr.Decode(r);
+            }
+            else if (response is BrowseNextResponse bnr)
+            {
+                if (typeId.NumericIdentifier != BrowseNextResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for BrowseNextResponse: {typeId.NumericIdentifier}");
+                bnr.Decode(r);
             }
             else
             {
