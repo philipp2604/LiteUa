@@ -50,7 +50,7 @@ namespace LiteUa.Tests.IntegrationTests
             // 3. Connection loss
             var field = typeof(SubscriptionClient).GetField("_channel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             var channel = (UaTcpClientChannel?)field?.GetValue(client);
-            if(channel != null)
+            if (channel != null)
                 await channel.DisposeAsync();
 
             // 4. Wait for reconnection
@@ -63,8 +63,45 @@ namespace LiteUa.Tests.IntegrationTests
 
             var result = await Task.WhenAny(tcsAfterReconnect.Task, Task.Delay(10000));
             Assert.Equal(tcsAfterReconnect.Task, result);
-
-            client.Dispose();
         }
+
+        [Fact]
+        public async Task Multi_Speed_Subscription()
+        {
+            await using var client = new SubscriptionClient(TestServerUrl, new AnonymousIdentity("Anonymous"));
+            client.Start();
+
+            var tcsFast = new TaskCompletionSource<bool>();
+            var tcsSlow = new TaskCompletionSource<bool>();
+
+            // Callbacks
+            client.DataChanged += (h, v) =>
+            {
+                if (h == 1) // Fast
+                {
+                    if (!tcsFast.Task.IsCompleted) tcsFast.TrySetResult(true);
+                }
+                else if (h == 2) // Slow
+                {
+                    if (!tcsSlow.Task.IsCompleted) tcsSlow.TrySetResult(true);
+                }
+            };
+
+            // Warten auf Connect
+            await Task.Delay(2000);
+
+            // 1. Fast Subscription (100ms)
+            await client.SubscribeAsync(new NodeId(4, 72), 100.0); // Handle 1 (da erstes)
+
+            // 2. Slow Subscription (1000ms)
+            // Nutzt dieselbe NodeId, ist egal. Handle wird 2.
+            await client.SubscribeAsync(new NodeId(4, 72), 1000.0);
+
+            // Wir erwarten, dass beide Daten liefern
+            await Task.WhenAll(tcsFast.Task, tcsSlow.Task);
+
+            Console.WriteLine("Both subscriptions received data.");
+        }
+
     }
 }

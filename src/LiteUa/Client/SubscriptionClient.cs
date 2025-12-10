@@ -4,10 +4,12 @@ using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
 using LiteUa.Transport;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace LiteUa.Client
@@ -20,144 +22,214 @@ namespace LiteUa.Client
         X509Certificate2? serverCert = null,
         MessageSecurityMode mode = MessageSecurityMode.None) : IDisposable, IAsyncDisposable
     {
+        // Configuration
         private readonly string _endpointUrl = endpointUrl;
         private readonly IUserIdentity _userIdentity = userIdentity ?? new AnonymousIdentity("Anonymous");
+        private readonly ISecurityPolicy _policy = policy ?? new SecurityPolicyNone();
         private readonly X509Certificate2? _clientCert = clientCert;
         private readonly X509Certificate2? _serverCert = serverCert;
-        private readonly ISecurityPolicy _policy = policy ?? new SecurityPolicyNone();
         private readonly MessageSecurityMode _securityMode = mode;
 
+        // Runtime State
         private UaTcpClientChannel? _channel;
-        private Subscription? _subscription;
 
-        // State Management
-        private readonly Dictionary<uint, NodeId> _monitoredItems = [];
-        private readonly Lock _itemsLock = new();
+        // Mapping: PublishingInterval -> Bucket
+        private readonly ConcurrentDictionary<double, SubscriptionBucket> _buckets = new();
+
+        // Handles
         private uint _nextClientHandle = 1;
+        private readonly Lock _handleLock = new();
 
+        // Lifecycle
         private CancellationTokenSource? _lifecycleCts;
         private Task? _reconnectTask;
         private volatile bool _isConnected = false;
+        private readonly Lock _reconnectLock = new();
+        private bool _isReconnecting = false;
 
         // Events
         public event Action<uint, DataValue>? DataChanged;
-        public event Action<bool>? ConnectionStatusChanged; // True = Connected, False = Reconnecting
+        public event Action<bool>? ConnectionStatusChanged;
 
         public void Start()
         {
-            if (_lifecycleCts != null) return; // already started
-
+            if (_lifecycleCts != null) return;
             _lifecycleCts = new CancellationTokenSource();
             _reconnectTask = Task.Run(SupervisorLoop);
         }
 
-        public async Task<uint> SubscribeAsync(NodeId nodeId)
+        public async Task<uint> SubscribeAsync(NodeId nodeId, double publishingInterval = 1000.0)
         {
             uint handle;
-            lock (_itemsLock)
-            {
-                handle = _nextClientHandle++;
-                _monitoredItems[handle] = nodeId;
-            }
-            if (_isConnected && _subscription != null)
+            lock (_handleLock) handle = _nextClientHandle++;
+
+            var bucket = _buckets.GetOrAdd(publishingInterval, interval => new SubscriptionBucket(interval));
+            bucket.AddItem(handle, nodeId);
+
+            if (_isConnected && _channel != null)
             {
                 try
                 {
-                    await _subscription.CreateMonitoredItemAsync(nodeId, handle);
+                    await bucket.EnsureSubscriptionCreatedAsync(_channel, OnDataChanged, OnSubscriptionError);
+                    if(bucket.LiveSubscription != null)
+                        await bucket.LiveSubscription.CreateMonitoredItemAsync(nodeId, handle);
                 }
-                catch
+                catch (Exception ex)
                 {
                     throw;
                 }
             }
-
             return handle;
+        }
+
+        private void OnDataChanged(uint handle, DataValue value) => DataChanged?.Invoke(handle, value);
+
+        private void OnSubscriptionError(Exception ex)
+        {
+            TriggerReconnect();
+        }
+
+        private void TriggerReconnect()
+        {
+            lock (_reconnectLock)
+            {
+                if (_isReconnecting) return;
+                _isConnected = false;
+                _isReconnecting = true;
+            }
+            ConnectionStatusChanged?.Invoke(false);
         }
 
         private async Task SupervisorLoop()
         {
-            if(_lifecycleCts == null) throw new InvalidOperationException("Client not started.");
-
-            while (!_lifecycleCts.IsCancellationRequested)
+            while (_lifecycleCts != null && !_lifecycleCts.IsCancellationRequested)
             {
                 if (!_isConnected)
                 {
                     try
                     {
-                        await ConnectAndSetupAsync();
-
-                        _isConnected = true;
+                        await ConnectAndRestoreAsync();
+                        lock (_reconnectLock) { _isConnected = true; _isReconnecting = false; }
                         ConnectionStatusChanged?.Invoke(true);
                     }
-                    catch (Exception)
+                    catch (Exception ex)
                     {
-                        // Backoff
-                        await Task.Delay(5000, _lifecycleCts.Token);
+                        if (!_lifecycleCts.IsCancellationRequested)
+                        {
+                            await Task.Delay(5000, _lifecycleCts.Token);
+                        }
                     }
                 }
                 else
                 {
-                    await Task.Delay(1000, _lifecycleCts.Token);
+                    try { await Task.Delay(1000, _lifecycleCts.Token); } catch { }
                 }
             }
         }
 
-        private async Task ConnectAndSetupAsync()
+        private async Task ConnectAndRestoreAsync(CancellationToken cancellationToken)
         {
-            // 1. Cleanup Old
-            _channel?.Dispose();
-            _subscription = null;
-
-            // 2. Connect Stack
-            _channel = new UaTcpClientChannel(_endpointUrl, _policy, _clientCert, _serverCert, _securityMode);
-            await _channel.ConnectAsync();
-            await _channel.CreateSessionAsync("urn:s7nexus:resilient", "urn:s7nexus", "Monitor");
-            await _channel.ActivateSessionAsync(_userIdentity);
-
-            // 3. Setup Subscription
-            var sub = new Subscription(_channel);
-            sub.DataChanged += (h, v) => DataChanged?.Invoke(h, v);
-            sub.ConnectionLost += OnConnectionLost;
-
-            await sub.CreateAsync(1000);
-
-            // 4. Restore Items
-            lock (_itemsLock)
+            // close old channel
+            if (_channel != null)
             {
-                foreach (var kvp in _monitoredItems)
-                {
-
-                    /// TODO: Bulk CreateMonitoredItems
-
-                    sub.CreateMonitoredItemAsync(kvp.Value, kvp.Key).Wait();
-                }
+                try { await _channel.DisposeAsync(); } catch { }
+                _channel = null;
             }
 
-            _subscription = sub;
+            // reset Buckets
+            foreach (var bucket in _buckets.Values) bucket.ClearLiveReference();
+
+            // create new channel
+            _channel = new UaTcpClientChannel(_endpointUrl, _policy, _clientCert, _serverCert, _securityMode);
+            await _channel.ConnectAsync(cancellationToken);
+            await _channel.CreateSessionAsync("urn:s7nexus:resilient", "urn:s7nexus", "Monitor", cancellationToken);
+            await _channel.ActivateSessionAsync(_userIdentity, cancellationToken);
+
+            // 3. Restore
+            foreach (var bucket in _buckets.Values)
+            {
+                await bucket.EnsureSubscriptionCreatedAsync(_channel, OnDataChanged, OnSubscriptionError);
+                await bucket.RestoreItemsAsync();
+            }
         }
 
-        private void OnConnectionLost(Exception ex)
+        // --- DISPOSE IMPLEMENTIERUNG ---
+
+        public async ValueTask DisposeAsync()
         {
-            Console.WriteLine("Connection Lost detected!");
-            _isConnected = false;
-            ConnectionStatusChanged?.Invoke(false);
+            _lifecycleCts?.Cancel();
+
+            foreach (var bucket in _buckets.Values)
+            {
+                await bucket.DisposeAsync();
+            }
+
+            if (_channel != null)
+            {
+                await _channel.DisposeAsync();
+            }
+
+            _lifecycleCts?.Dispose();
+            GC.SuppressFinalize(this);
         }
 
         public void Dispose()
         {
-            _lifecycleCts?.Cancel();
-            _channel?.DisconnectAsync().Wait();
-            _channel?.Dispose();
+            DisposeAsync().AsTask().Wait();
             GC.SuppressFinalize(this);
         }
 
-        public async ValueTask DisposeAsync()
+        // --- Inner Class ---
+        private class SubscriptionBucket(double interval) : IAsyncDisposable
         {
-            if(_channel != null)
-                await _channel.DisposeAsync();
+            public double Interval { get; } = interval; public Subscription? LiveSubscription { get; private set; }
+            private readonly Dictionary<uint, NodeId> _items = [];
+            private readonly Lock _lock = new();
 
-            Dispose();
-            GC.SuppressFinalize(this);
+            public void AddItem(uint handle, NodeId nodeId)
+            {
+                lock (_lock) _items[handle] = nodeId;
+            }
+
+            public void ClearLiveReference()
+            {
+                LiveSubscription = null;
+            }
+
+            public async Task EnsureSubscriptionCreatedAsync(
+                UaTcpClientChannel channel,
+                Action<uint, DataValue> cb,
+                Action<Exception> errCb)
+            {
+                if (LiveSubscription != null) return;
+                var sub = new Subscription(channel);
+                sub.DataChanged += cb;
+                sub.ConnectionLost += errCb;
+                await sub.CreateAsync(Interval);
+                LiveSubscription = sub;
+            }
+
+            public async Task RestoreItemsAsync()
+            {
+                if (LiveSubscription == null) return;
+                lock (_lock)
+                {
+                    foreach (var kvp in _items)
+                    {
+                        // TODO: Bulk Create
+                        LiveSubscription.CreateMonitoredItemAsync(kvp.Value, kvp.Key).Wait();
+                    }
+                }
+            }
+
+            public async ValueTask DisposeAsync()
+            {
+                if (LiveSubscription != null)
+                {
+                    await LiveSubscription.DisposeAsync();
+                    LiveSubscription = null;
+                }
+            }
         }
     }
 }

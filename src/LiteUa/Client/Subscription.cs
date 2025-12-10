@@ -192,19 +192,14 @@ namespace LiteUa.Client
 
         public void Dispose()
         {
-            DeleteAsync().Wait();
-            _channel?.DisconnectAsync().Wait();
-            _channel?.Dispose();
+            DisposeAsync().AsTask().Wait();
             GC.SuppressFinalize(this);
         }
 
         public async ValueTask DisposeAsync()
         {
-            await DeleteAsync();
-
-            if (_channel != null)
-                await _channel.DisposeAsync();
-            Dispose();
+            Stop();
+            await _channel.DisposeAsync();
             GC.SuppressFinalize(this);
         }
     }
