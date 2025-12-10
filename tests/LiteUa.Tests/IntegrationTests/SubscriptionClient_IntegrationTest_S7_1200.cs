@@ -4,20 +4,17 @@ using LiteUa.Stack.Session.Identity;
 using LiteUa.Transport;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Text;
 using Xunit.Abstractions;
 
 namespace LiteUa.Tests.IntegrationTests
 {
-    public class SubscriptionClient_IntegrationTest_S7_1200
+    [Category("IntegrationTests_S7-1200")]
+    public class SubscriptionClient_IntegrationTest_S7_1200(ITestOutputHelper output)
     {
-        private readonly ITestOutputHelper _output;
+        private readonly ITestOutputHelper _output = output;
         public const string TestServerUrl = "opc.tcp://192.178.0.1:4840/";
-
-        public SubscriptionClient_IntegrationTest_S7_1200(ITestOutputHelper output)
-        {
-            _output = output;
-        }
 
         [Fact]
         public async Task Should_Reconnect_And_Restore_Subscription()

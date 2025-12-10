@@ -55,5 +55,21 @@ namespace LiteUa.Security
 
             return output;
         }
+
+        /// <summary>
+        /// Returns the HashAlgorithmName and RSASignaturePadding for a given URI.
+        /// </summary>
+        /// <param name="uri">The w3.org URI to parse.</param>
+        /// <returns>The <see cref="HashAlgorithmName"/> and <see cref="RSASignaturePadding"/> for the given URI.</returns>
+        /// <exception cref="NotSupportedException"></exception>
+        public static (HashAlgorithmName, RSASignaturePadding) ParseAlgorithm(string uri)
+        {
+            return uri switch
+            {
+                "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" => (HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1),
+                "http://www.w3.org/2000/09/xmldsig#rsa-sha1" => (HashAlgorithmName.SHA1, RSASignaturePadding.Pkcs1),
+                _ => throw new NotSupportedException($"Unsupported Signature Algorithm: {uri}"),
+            };
+        }
     }
 }

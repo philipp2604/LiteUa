@@ -1,4 +1,5 @@
 ﻿using LiteUa.BuiltIn;
+using LiteUa.Client.Events;
 using LiteUa.Encoding;
 using LiteUa.Security;
 using LiteUa.Security.Policies;
@@ -17,6 +18,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
@@ -50,11 +53,13 @@ namespace LiteUa.Transport
         // --- Configuration / Security ---
         private readonly ISecurityPolicy _securityPolicy;
         private readonly X509Certificate2? _clientCertificate;
-        private readonly X509Certificate2? _serverCertificate;
+        private X509Certificate2? _serverCertificate;
         private byte[]? _clientNonce;
         private readonly MessageSecurityMode _securityMode;
         private byte[]? _sessionServerNonce;
         private byte[]? _sessionClientNonce;
+
+        public event EventHandler<CertificateValidationEventArgs>? CertificateValidation;
 
         // --- Negotiated Parameters ---
         public uint SendBufferSize { get; private set; }
@@ -194,7 +199,12 @@ namespace LiteUa.Transport
             _authenticationToken = response.AuthenticationToken ?? new NodeId(0,0);
             _sessionServerNonce = response.ServerNonce;
 
-            /// TODO: Validate server certificate
+            if(response.ServerCertificate != null && response.ServerCertificate.Length > 0)
+            {
+                _serverCertificate = X509CertificateLoader.LoadCertificate(response.ServerCertificate);
+            }
+
+            ValidateServerSessionSignature(response, _sessionClientNonce);
         }
 
         public async Task ActivateSessionAsync(IUserIdentity identity, CancellationToken cancellationToken = default)
@@ -356,7 +366,7 @@ namespace LiteUa.Transport
             if (_stream == null)
                 throw new InvalidOperationException("Not connected to server.");
 
-            await _lock.WaitAsync();
+            await _lock.WaitAsync(cancellationToken);
             try
             {
                 _clientNonce = new byte[32];
@@ -478,7 +488,7 @@ namespace LiteUa.Transport
                     wFinal.WriteBytes(securityHeaderBytes);
                     wFinal.WriteBytes(encryptedBlob);
                     byte[] packet = msFinal.ToArray();
-                    await _stream.WriteAsync(packet);
+                    await _stream.WriteAsync(packet, cancellationToken);
                 }
 
                 await ReceiveOpenSecureChannelResponse(cancellationToken);
@@ -535,7 +545,7 @@ namespace LiteUa.Transport
                 sendBuffer = ms.ToArray();
             }
 
-            await _stream.WriteAsync(sendBuffer);
+            await _stream.WriteAsync(sendBuffer, cancellationToken);
 
             byte[] headerBuffer = new byte[8];
             await ReadExactAsync(_stream, headerBuffer, 8, cancellationToken);
@@ -719,7 +729,7 @@ namespace LiteUa.Transport
                 wFinal.WriteBytes(encryptedBlob);
 
                 byte[] packet = msFinal.ToArray();
-                await _stream.WriteAsync(packet);
+                await _stream.WriteAsync(packet, cancellationToken);
             }
 
             await ReceiveOpenSecureChannelResponse(cancellationToken);
@@ -783,6 +793,16 @@ namespace LiteUa.Transport
             int secHeaderLen = (int)(endHeaderPos - startPos);
             byte[] secHeaderBytes = new byte[secHeaderLen];
             Array.Copy(rawBody, startPos, secHeaderBytes, 0, secHeaderLen);
+
+            if(_securityMode != MessageSecurityMode.None)
+            {
+                if(secHeader.SenderCertificate == null)
+                {
+                    throw new InvalidDataException("Sender certificate must not be null when MessageSecurityMode is different than None.");
+                }
+                /// TODO: allow configuration regarding untrusted authority
+                ValidateServerCertificate(secHeader.SenderCertificate, true);
+            }
 
             byte[] decryptedPayload;
 
@@ -1189,6 +1209,125 @@ namespace LiteUa.Transport
                 totalRead += read;
             }
             return totalRead;
+        }
+
+        private void ValidateServerSessionSignature(CreateSessionResponse response, byte[] clientNonce)
+        {
+            var sigData = response.ServerSignature;
+
+            // 1. No signature -> skip check (e.g. SecurityMode None)
+            if (sigData == null || sigData.Signature == null || sigData.Signature.Length == 0 || sigData.Algorithm == null)
+            {
+                // if SecurityMode requires signature, throw
+                if (_securityMode != MessageSecurityMode.None)
+                {
+                    throw new Exception("Server did not send a signature, but SecurityMode requires it.");
+                }
+                return;
+            }
+
+            // 2. Recreate signed data
+            // Spec Part 4: ClientCertificate + ClientNonce
+            byte[] clientCertBytes = _clientCertificate?.RawData ?? [];
+
+            byte[] dataToVerify = new byte[clientCertBytes.Length + clientNonce.Length];
+            Array.Copy(clientCertBytes, 0, dataToVerify, 0, clientCertBytes.Length);
+            Array.Copy(clientNonce, 0, dataToVerify, clientCertBytes.Length, clientNonce.Length);
+
+            // 3. Retrieve Server Public Key
+            X509Certificate2? serverCertToVerify = _serverCertificate ?? throw new Exception("Cannot verify Server Signature: No Server Certificate available.");
+
+            // 4. Verify Signature
+            using var rsa = serverCertToVerify.GetRSAPublicKey() ?? throw new Exception("Server Certificate has no Public Key.");
+            var (hashAlg, padding) = CryptoUtils.ParseAlgorithm(sigData.Algorithm);
+
+            if (!rsa.VerifyData(dataToVerify, sigData.Signature, hashAlg, padding))
+            {
+                throw new Exception("CRITICAL: Server Session Signature Invalid!");
+            }
+        }
+
+        private void ValidateServerCertificate(byte[] certBytes, bool allowUnknownAuthority = false)
+        {
+            /// TODO: add general "allow untrusted"
+
+            if (certBytes == null || certBytes.Length == 0) return;
+
+            X509Certificate2? cert = null;
+
+            // Standard X.509 DER (Raw Certificate)
+            try
+            {
+                cert = X509CertificateLoader.LoadCertificate(certBytes);
+            }
+            catch (CryptographicException)
+            {
+                // 2. PKCS#7 Container (Certificate Chain)
+                try
+                {
+                    var cms = new SignedCms();
+                    cms.Decode(certBytes);
+
+                    if (cms.Certificates.Count > 0)
+                    {
+                        // first should be the instance's certificate
+                        cert = cms.Certificates[0];
+                    }
+                }
+                catch
+                {
+                    // 3. PFX/PKCS#12
+                    try
+                    {
+                        cert = X509CertificateLoader.LoadPkcs12(certBytes, null);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+
+            if (cert == null)
+            {
+                throw new Exception($"Could not decode Server Certificate. Raw Length: {certBytes.Length} bytes.");
+            }
+
+            var host = new Uri(_endpointUrl).Host;
+
+            // 1. OS validation (Chain Build)
+            using var chain = new X509Chain();
+            // default: no online check
+            /// TODO: allow configuration: allow check for online revocation
+            chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+            chain.ChainPolicy.VerificationFlags = X509VerificationFlags.NoFlag;
+
+            if(allowUnknownAuthority)
+                chain.ChainPolicy.VerificationFlags |= X509VerificationFlags.AllowUnknownCertificateAuthority;
+
+            bool osValid = chain.Build(cert);
+
+            // 2. Fire event
+            var args = new CertificateValidationEventArgs(cert, host, chain.ChainStatus, osValid);
+
+            // If no listeners, the OS decides
+            if (CertificateValidation == null)
+            {
+                if (!osValid)
+                {
+                    string errors = string.Join(", ", Array.ConvertAll(chain.ChainStatus, s => s.StatusInformation));
+                    throw new Exception($"Server Certificate rejected by OS: {errors}");
+                }
+            }
+            else
+            {
+                // Invoke
+                CertificateValidation.Invoke(this, args);
+
+                if (!args.Accept)
+                {
+                    throw new Exception("Server Certificate rejected by user application.");
+                }
+            }
         }
 
         public async ValueTask DisposeAsync()

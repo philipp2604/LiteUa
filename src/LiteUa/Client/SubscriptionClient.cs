@@ -12,21 +12,27 @@ using System.Threading.Tasks;
 
 namespace LiteUa.Client
 {
-    public class SubscriptionClient : IDisposable, IAsyncDisposable
+    public class SubscriptionClient(
+        string endpointUrl,
+        IUserIdentity? userIdentity = null,
+        ISecurityPolicy? policy = null,
+        X509Certificate2? clientCert = null,
+        X509Certificate2? serverCert = null,
+        MessageSecurityMode mode = MessageSecurityMode.None) : IDisposable, IAsyncDisposable
     {
-        private readonly string _endpointUrl;
-        private readonly IUserIdentity _userIdentity;
-        private readonly X509Certificate2? _clientCert;
-        private readonly X509Certificate2? _serverCert;
-        private readonly ISecurityPolicy _policy;
-        private readonly MessageSecurityMode _securityMode;
+        private readonly string _endpointUrl = endpointUrl;
+        private readonly IUserIdentity _userIdentity = userIdentity ?? new AnonymousIdentity("Anonymous");
+        private readonly X509Certificate2? _clientCert = clientCert;
+        private readonly X509Certificate2? _serverCert = serverCert;
+        private readonly ISecurityPolicy _policy = policy ?? new SecurityPolicyNone();
+        private readonly MessageSecurityMode _securityMode = mode;
 
         private UaTcpClientChannel? _channel;
         private Subscription? _subscription;
 
         // State Management
-        private readonly Dictionary<uint, NodeId> _monitoredItems = new Dictionary<uint, NodeId>();
-        private readonly object _itemsLock = new object();
+        private readonly Dictionary<uint, NodeId> _monitoredItems = [];
+        private readonly Lock _itemsLock = new();
         private uint _nextClientHandle = 1;
 
         private CancellationTokenSource? _lifecycleCts;
@@ -36,22 +42,6 @@ namespace LiteUa.Client
         // Events
         public event Action<uint, DataValue>? DataChanged;
         public event Action<bool>? ConnectionStatusChanged; // True = Connected, False = Reconnecting
-
-        public SubscriptionClient(
-            string endpointUrl,
-            IUserIdentity? userIdentity = null,
-            ISecurityPolicy? policy = null,
-            X509Certificate2? clientCert = null,
-            X509Certificate2? serverCert = null,
-            MessageSecurityMode mode = MessageSecurityMode.None)
-        {
-            _endpointUrl = endpointUrl;
-            _userIdentity = userIdentity ?? new AnonymousIdentity("Anonymous");
-            _policy = policy ?? new SecurityPolicyNone();
-            _clientCert = clientCert;
-            _serverCert = serverCert;
-            _securityMode = mode;
-        }
 
         public void Start()
         {
@@ -158,6 +148,7 @@ namespace LiteUa.Client
             _lifecycleCts?.Cancel();
             _channel?.DisconnectAsync().Wait();
             _channel?.Dispose();
+            GC.SuppressFinalize(this);
         }
 
         public async ValueTask DisposeAsync()

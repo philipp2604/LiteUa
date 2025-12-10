@@ -12,11 +12,7 @@ namespace LiteUa.Encoding
 {
     public static class CustomUaTypeRegistry
     {
-#if NET9_0_OR_GREATER
-        private static readonly System.Threading.Lock _lock = new();
-#else
-        private static readonly object _lock = new();
-#endif
+        private static readonly Lock _lock = new();
         private static readonly Dictionary<NodeId, Func<OpcUaBinaryReader, object>> _decoders = [];
 
         private static readonly Dictionary<Type, Action<object, OpcUaBinaryWriter>> _encoders = [];
