@@ -68,17 +68,15 @@ namespace LiteUa.BuiltIn
         {
             byte mask = 0;
             if (Value != null) mask |= 0x01;
-            if (StatusCode.Code != 0) mask |= 0x02; 
+            if (StatusCode.Code != 0) mask |= 0x02;
 
-            mask |= 0x02;
+            if (SourceTimestamp != DateTime.MinValue) mask |= 0x04;
 
             writer.WriteByte(mask);
 
             Value?.Encode(writer);
             if ((mask & 0x02) != 0) StatusCode.Encode(writer);
-
-            // Ignore timestamps for now
-            ///TODO: Implement timestamps
+            if ((mask & 0x04) != 0) writer.WriteDateTime(SourceTimestamp);
         }
     }
 }
