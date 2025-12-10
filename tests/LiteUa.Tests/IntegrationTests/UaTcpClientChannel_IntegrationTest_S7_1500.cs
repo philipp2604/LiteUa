@@ -692,44 +692,39 @@ namespace LiteUa.Tests.IntegrationTests
         [Fact]
         public async Task Call_Method_With_Nested_Struct_Array()
         {
-            var objectId = new NodeId(3, "\"COMPLEX_Method_DB\""); // Das SPS-Objekt, auf dem die Methode liegt
-            var methodId = new NodeId(3, "\"COMPLEX_Method_DB\".Method"); // Die Methode selbst
+            var objectId = new NodeId(3, "\"COMPLEX_Method_DB\"");
+            var methodId = new NodeId(3, "\"COMPLEX_Method_DB\".Method");
 
-            var encodingIdDtObject = new NodeId(0, 296);
+            await using var client = new UaTcpClientChannel(TestServerUrl);
+            await client.ConnectAsync();
+            await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "MethodSession");
+            await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
 
-            await using (var client = new UaTcpClientChannel(TestServerUrl))
+            var inputData = new ComplexInput
             {
-                await client.ConnectAsync();
-                await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "MethodSession");
-                await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+                InputObjects = new DT_Object[3]
+            };
 
-                var inputData = new ComplexInput
-                {
-                    InputObjects = new DT_Object[3]
-                };
+            inputData.InputObjects[0] = new DT_Object("Test", new DT_Pos { X = 10, Y = 20, Z = 30 });
+            inputData.InputObjects[1] = new DT_Object("Elem 2", new DT_Pos { X = 11, Y = 21, Z = 31 });
+            inputData.InputObjects[2] = new DT_Object("Z Object", new DT_Pos { X = 12, Y = 22, Z = 32 });
 
-                inputData.InputObjects[0] = new DT_Object("Test", new DT_Pos { X = 10, Y = 20, Z = 30 });
-                inputData.InputObjects[1] = new DT_Object("Elem 2", new DT_Pos { X = 11, Y = 21, Z = 31});
-                inputData.InputObjects[2] = new DT_Object("Z Object", new DT_Pos { X = 12, Y = 22, Z = 32 });
+            var result = await client.CallTypedAsync<ComplexInput, ComplexOutput>(
+                objectId,
+                methodId,
+                inputData);
 
-                var result = await client.CallTypedAsync<ComplexInput, ComplexOutput>(
-                    objectId,
-                    methodId,
-                    inputData);
+            Assert.NotNull(result);
+            Assert.NotNull(result.OutputObjects);
+            Assert.Equal(3, result.OutputObjects.Length);
 
-                // 4. Prüfen
-                Assert.NotNull(result);
-                Assert.NotNull(result.OutputObjects);
-                Assert.Equal(3, result.OutputObjects.Length);
+            var out1 = result.OutputObjects[0];
+            var out3 = result.OutputObjects[2];
 
-                var out1 = result.OutputObjects[0];
-                var out3 = result.OutputObjects[2];
-
-                Assert.Equal("Test", out1.Name);
-                Assert.Equal(10, out1.Position.X);
-                Assert.Equal("Z Object", out3.Name);
-                Assert.Equal(12, out3.Position.X);
-            }
+            Assert.Equal("Test", out1.Name);
+            Assert.Equal(10, out1.Position.X);
+            Assert.Equal("Z Object", out3.Name);
+            Assert.Equal(12, out3.Position.X);
         }
 
         #region Helper classes
@@ -760,16 +755,10 @@ namespace LiteUa.Tests.IntegrationTests
             }
         }
 
-        class DT_Object
+        class DT_Object(string name, UaTcpClientChannelIntegrationTests_S7_1500.DT_Pos position)
         {
-            public string Name { get; set; }
-            public DT_Pos Position { get; set; }
-
-            public DT_Object(string name,  DT_Pos position)
-            {
-                Name = name;
-                Position = position;
-            }
+            public string Name { get; set; } = name;
+            public DT_Pos Position { get; set; } = position;
 
             public static DT_Object Decode(OpcUaBinaryReader reader)
             {
