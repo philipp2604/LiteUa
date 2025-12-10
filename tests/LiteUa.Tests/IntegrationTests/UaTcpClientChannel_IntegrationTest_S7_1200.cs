@@ -699,7 +699,7 @@ namespace LiteUa.Tests.IntegrationTests
                 await client.CreateSessionAsync("urn:test", "urn:test", "BrowseNext");
                 await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
 
-                var refs = await client.BrowseAsync(new NodeId(0, 2253), maxRefs: 2);
+                var refs = await client.BrowseAsync(new NodeId(0, 2253), MaxRefs: 2);
 
                 Assert.NotNull(refs);
                 Assert.NotEmpty(refs);

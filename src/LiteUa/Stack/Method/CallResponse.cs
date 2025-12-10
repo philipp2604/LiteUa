@@ -32,11 +32,14 @@ namespace LiteUa.Stack.Method
                 for (int i = 0; i < count; i++) Results[i] = CallMethodResponse.Decode(reader);
             }
 
-            int diagCount = reader.ReadInt32();
-            if (diagCount > 0)
+            if (reader.Position < reader.Length)
             {
-                DiagnosticInfos = new DiagnosticInfo[diagCount];
-                for (int i = 0; i < diagCount; i++) DiagnosticInfos[i] = DiagnosticInfo.Decode(reader);
+                int diagCount = reader.ReadInt32();
+                if (diagCount > 0)
+                {
+                    DiagnosticInfos = new DiagnosticInfo[diagCount];
+                    for (int i = 0; i < diagCount; i++) DiagnosticInfos[i] = DiagnosticInfo.Decode(reader);
+                }
             }
         }
     }

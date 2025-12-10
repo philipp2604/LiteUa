@@ -34,13 +34,13 @@ namespace LiteUa.Stack.View
                 for (int i = 0; i < count; i++) Results[i] = BrowseResult.Decode(reader);
             }
 
-            int diagCount = reader.ReadInt32();
-            if (diagCount > 0)
+            if (reader.Position < reader.Length)
             {
-                DiagnosticInfos = new DiagnosticInfo[count];
-                for (int i = 0; i < count; i++)
+                int diagCount = reader.ReadInt32();
+                if (diagCount > 0)
                 {
-                    DiagnosticInfos[i] = DiagnosticInfo.Decode(reader);
+                    DiagnosticInfos = new DiagnosticInfo[diagCount];
+                    for (int i = 0; i < diagCount; i++) DiagnosticInfos[i] = DiagnosticInfo.Decode(reader);
                 }
             }
         }

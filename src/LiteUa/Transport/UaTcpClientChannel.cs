@@ -934,6 +934,8 @@ namespace LiteUa.Transport
                     else if (request is CloseSecureChannelRequest cscr) cscr.Encode(w);
                     else if (request is CallRequest cr) cr.Encode(w);
                     else if (request is BrowseNextRequest bcr) bcr.Encode(w);
+                    else if (request is DeleteMonitoredItemsRequest dmir) dmir.Encode(w);
+                    else if (request is DeleteSubscriptionsRequest dsr) dsr.Encode(w);
                     else throw new NotImplementedException($"Request Type {typeof(TRequest).Name} not supported.");
 
                     bodyBytes = ms.ToArray();
@@ -1220,12 +1222,47 @@ namespace LiteUa.Transport
                     throw new Exception($"Unexpected Response Type for BrowseNextResponse: {typeId.NumericIdentifier}");
                 bnr.Decode(r);
             }
+            else if (response is DeleteMonitoredItemsResponse dmir)
+            {
+                if (typeId.NumericIdentifier != DeleteMonitoredItemsResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for DeleteMonitoredItemsResponse: {typeId.NumericIdentifier}");
+                dmir.Decode(r);
+            }
+            else if (response is DeleteSubscriptionsResponse dsr)
+            {
+                if (typeId.NumericIdentifier != DeleteSubscriptionsResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for DeleteSubscriptionsResponse: {typeId.NumericIdentifier}");
+                dsr.Decode(r);
+            }
             else
             {
                 throw new NotImplementedException($"Response decoding for {typeof(TResponse).Name} not implemented.");
             }
 
             return response;
+        }
+
+        public async Task<StatusCode[]?> DeleteMonitoredItemsAsync(uint subscriptionId, uint[] monitoredItemIds, CancellationToken token = default)
+        {
+            var req = new DeleteMonitoredItemsRequest
+            {
+                RequestHeader = CreateRequestHeader(),
+                SubscriptionId = subscriptionId,
+                MonitoredItemIds = monitoredItemIds
+            };
+            var resp = await SendRequestAsync<DeleteMonitoredItemsRequest, DeleteMonitoredItemsResponse>(req, token);
+            return resp.Results;
+        }
+
+        public async Task<StatusCode[]?> DeleteSubscriptionsAsync(uint[] subscriptionIds, CancellationToken token = default)
+        {
+            var req = new DeleteSubscriptionsRequest
+            {
+                RequestHeader = CreateRequestHeader(),
+                SubscriptionIds = subscriptionIds
+            };
+            var resp = await SendRequestAsync<DeleteSubscriptionsRequest, DeleteSubscriptionsResponse>(req, token);
+            return resp.Results;
         }
 
         public async Task<GetEndpointsResponse> GetEndpointsAsync()

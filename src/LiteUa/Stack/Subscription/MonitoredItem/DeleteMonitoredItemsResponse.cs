@@ -7,35 +7,31 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace LiteUa.Stack.Session
+namespace LiteUa.Stack.Subscription.MonitoredItem
 {
     /// TODO: Add unit tests
     /// TODO: fix documentation comments
     /// TODO: Add ToString() method
 
-    public class ActivateSessionResponse
+    public class DeleteMonitoredItemsResponse
     {
-        public static readonly NodeId NodeId = new(470);
+        public static readonly NodeId NodeId = new(784);
 
         public ResponseHeader? ResponseHeader { get; set; }
-        public byte[]? ServerNonce { get; set; }
-        public uint[]? Results { get; set; }
+        public StatusCode[]? Results { get; set; }
         public DiagnosticInfo?[]? DiagnosticInfos { get; set; }
 
         public void Decode(OpcUaBinaryReader reader)
         {
             ResponseHeader = ResponseHeader.Decode(reader);
-            ServerNonce = reader.ReadByteString();
 
-            // Results Array (StatusCodes for SoftwareCerts validation)
             int count = reader.ReadInt32();
             if (count > 0)
             {
-                Results = new uint[count];
-                for (int i = 0; i < count; i++) Results[i] = reader.ReadUInt32();
+                Results = new StatusCode[count];
+                for (int i = 0; i < count; i++) Results[i] = StatusCode.Decode(reader);
             }
 
-            // Diagnostics
             if (reader.Position < reader.Length)
             {
                 int diagCount = reader.ReadInt32();

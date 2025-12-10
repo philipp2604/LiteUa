@@ -90,7 +90,6 @@ namespace LiteUa.Client
                     lock (_ackLock)
                     {
                         acksToSend = [.. _pendingAcks];
-                        _pendingAcks.Clear();  /// TODO: Only remove ACKs after PublishResponse was received successfully.
                     }
 
                     var req = new PublishRequest
@@ -112,17 +111,19 @@ namespace LiteUa.Client
                     try
                     {
                         // 2. Send
-                        var response = await _channel.SendRequestAsync<PublishRequest, PublishResponse>(req, linkedCts.Token);
+                        var response = await _channel.SendRequestAsync<PublishRequest, PublishResponse>(req);
 
                         if (response.NotificationMessage == null)
                         {
                             throw new Exception("PublishResponse contains no NotificationMessage.");
                         }
 
-                        // 3. Save Ack to queue
-
+                        // 3. Remove acks, prepare new ones
                         lock (_ackLock)
                         {
+                            for (int i = 0; i < acksToSend.Length; i++) _pendingAcks.Dequeue();
+
+                            // prepare new acks
                             _pendingAcks.Enqueue(new SubscriptionAcknowledgement
                             {
                                 SubscriptionId = response.SubscriptionId,
@@ -171,15 +172,27 @@ namespace LiteUa.Client
             }
         }
 
+        public async Task DeleteAsync()
+        {
+            // 1. Stop loop
+            Stop();
+
+            // 2. Delete subscription
+            if (_subscriptionId != 0)
+            {
+                await _channel.DeleteSubscriptionsAsync([_subscriptionId]);
+                _subscriptionId = 0;
+            }
+        }
+
         public void Stop()
         {
             _cts?.Cancel();
-            /// TODO: Send DeleteMonitoredItems / DeleteSubscription Requests
         }
 
         public void Dispose()
         {
-            Stop();
+            DeleteAsync().Wait();
             _channel?.DisconnectAsync().Wait();
             _channel?.Dispose();
             GC.SuppressFinalize(this);
@@ -187,9 +200,10 @@ namespace LiteUa.Client
 
         public async ValueTask DisposeAsync()
         {
+            await DeleteAsync();
+
             if (_channel != null)
                 await _channel.DisposeAsync();
-
             Dispose();
             GC.SuppressFinalize(this);
         }
