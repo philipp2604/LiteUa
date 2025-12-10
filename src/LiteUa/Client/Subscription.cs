@@ -12,17 +12,20 @@ using System.Threading.Tasks;
 
 namespace LiteUa.Client
 {
-    public class Subscription
+    public class Subscription : IAsyncDisposable, IDisposable
     {
         private readonly UaTcpClientChannel _channel;
         private uint _subscriptionId;
         private CancellationTokenSource? _cts;
         private Task? _publishTask;
+        private double _publishingInterval;
+        private uint _keepAliveCount;
 
-        private readonly Queue<SubscriptionAcknowledgement> _pendingAcks = new Queue<SubscriptionAcknowledgement>();
-        private readonly object _ackLock = new object();
+        private readonly Queue<SubscriptionAcknowledgement> _pendingAcks = new();
+        private readonly object _ackLock = new();
 
         public event Action<uint, DataValue>? DataChanged;
+        public event Action<Exception>? ConnectionLost;
 
         public Subscription(UaTcpClientChannel channel)
         {
@@ -35,8 +38,8 @@ namespace LiteUa.Client
             {
                 RequestHeader = _channel.CreateRequestHeader(),
                 RequestedPublishingInterval = publishingInterval,
-                RequestedLifetimeCount = 60, // KeepAlive * 3
-                RequestedMaxKeepAliveCount = 20,
+                RequestedLifetimeCount = 60, // KeepAlive * 6
+                RequestedMaxKeepAliveCount = 10, // KeepAlive every 10 intervals
                 MaxNotificationsPerPublish = 0,
                 PublishingEnabled = true,
                 Priority = 0
@@ -44,6 +47,9 @@ namespace LiteUa.Client
 
             var response = await _channel.SendRequestAsync<CreateSubscriptionRequest, CreateSubscriptionResponse>(req);
             _subscriptionId = response.SubscriptionId;
+
+            _publishingInterval = response.RevisedPublishingInterval;
+            _keepAliveCount = response.RevisedMaxKeepAliveCount;
 
             _cts = new CancellationTokenSource();
             _publishTask = Task.Run(PublishLoop);
@@ -98,64 +104,78 @@ namespace LiteUa.Client
                         SubscriptionAcknowledgements = acksToSend
                     };
 
+                    // calculate TimeoutHint
+                    // Latest answer after (Interval * KeepAlive)
+                    // We give him +50% margin or min 5 seconds.
+                    double maxSilenceMs = _publishingInterval * _keepAliveCount * 1.5;
+                    if (maxSilenceMs < 5000) maxSilenceMs = 5000;
 
-                    req.RequestHeader.TimeoutHint = 60000;
+                    req.RequestHeader.TimeoutHint = (uint)maxSilenceMs;
 
-                    // 2. Send
-                    var response = await _channel.SendRequestAsync<PublishRequest, PublishResponse>(req);
-
-                    if(response.NotificationMessage == null)
+                    using (var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(maxSilenceMs)))
+                    using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, timeoutCts.Token))
                     {
-                        throw new Exception("PublishResponse contains no NotificationMessage.");
-                    }
-
-                    // 3. Save Ack to queue
-
-                    lock (_ackLock)
-                    {
-                        _pendingAcks.Enqueue(new SubscriptionAcknowledgement
+                        try
                         {
-                            SubscriptionId = response.SubscriptionId,
-                            SequenceNumber = response.NotificationMessage.SequenceNumber
-                        });
-                    }
+                            // 2. Send
+                            var response = await _channel.SendRequestAsync<PublishRequest, PublishResponse>(req, linkedCts.Token);
 
-                    // 4. Handle Notifications
-                    if (response.NotificationMessage.NotificationData != null)
-                    {
-                        foreach (var extObj in response.NotificationMessage.NotificationData)
-                        {
-                            // DataChangeNotification (811)
-                            if (extObj.TypeId.NumericIdentifier == 811 && extObj.Encoding == 0x01)
+                            if (response.NotificationMessage == null)
                             {
-                                using (var ms = new System.IO.MemoryStream(extObj.Body ?? throw new Exception("Body of DataChangeNotification is null.")))
+                                throw new Exception("PublishResponse contains no NotificationMessage.");
+                            }
+
+                            // 3. Save Ack to queue
+
+                            lock (_ackLock)
+                            {
+                                _pendingAcks.Enqueue(new SubscriptionAcknowledgement
                                 {
-                                    var r = new OpcUaBinaryReader(ms);
-                                    var dcn = DataChangeNotification.Decode(r);
-                                    if (dcn.MonitoredItems != null)
+                                    SubscriptionId = response.SubscriptionId,
+                                    SequenceNumber = response.NotificationMessage.SequenceNumber
+                                });
+                            }
+
+                            // 4. Handle Notifications
+                            if (response.NotificationMessage.NotificationData != null)
+                            {
+                                foreach (var extObj in response.NotificationMessage.NotificationData)
+                                {
+                                    // DataChangeNotification (811)
+                                    if (extObj.TypeId.NumericIdentifier == 811 && extObj.Encoding == 0x01)
                                     {
-                                        foreach (var item in dcn.MonitoredItems)
+                                        using (var ms = new System.IO.MemoryStream(extObj.Body ?? throw new Exception("Body of DataChangeNotification is null.")))
                                         {
-                                            if(item?.Value != null)
+                                            var r = new OpcUaBinaryReader(ms);
+                                            var dcn = DataChangeNotification.Decode(r);
+                                            if (dcn.MonitoredItems != null)
                                             {
-                                                DataChanged?.Invoke(item.ClientHandle, item.Value);
+                                                foreach (var item in dcn.MonitoredItems)
+                                                {
+                                                    if (item?.Value != null)
+                                                    {
+                                                        DataChanged?.Invoke(item.ClientHandle, item.Value);
+                                                    }
+                                                }
                                             }
                                         }
                                     }
+                                    /// TODO: EventNotificationList (916) or StatusChangeNotification (820) can be handled here as well.
                                 }
                             }
-                            /// TODO: EventNotificationList (916) or StatusChangeNotification (820) can be handled here as well.
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            if (_cts.IsCancellationRequested) return;
+                            throw new TimeoutException($"Publish Request timed out after {maxSilenceMs} ms (No KeepAlive received).");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    // No crash, retry.
-                    if (!_cts.IsCancellationRequested)
-                    {
-                        Console.WriteLine($"Publish Loop Error: {ex.Message}");
-                        await Task.Delay(2000);
-                    }
+                    if (_cts.IsCancellationRequested) return;
+                    ConnectionLost?.Invoke(ex);
+                    return;
                 }
             }
         }
@@ -164,6 +184,22 @@ namespace LiteUa.Client
         {
             _cts?.Cancel();
             /// TODO: Send DeleteMonitoredItems / DeleteSubscription Requests
+        }
+
+        public void Dispose()
+        {
+            Stop();
+            _channel?.DisconnectAsync().Wait();
+            _channel?.Dispose();
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_channel != null)
+                await _channel.DisposeAsync();
+
+            Dispose();
+            GC.SuppressFinalize(this);
         }
     }
 }

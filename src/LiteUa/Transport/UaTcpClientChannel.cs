@@ -144,7 +144,7 @@ namespace LiteUa.Transport
             };
         }
 
-        public async Task ConnectAsync()
+        public async Task ConnectAsync(CancellationToken cancellationToken = default)
         {
             var uri = new Uri(_endpointUrl);
             int port = uri.Port == -1 ? 4840 : uri.Port;
@@ -154,13 +154,13 @@ namespace LiteUa.Transport
             _stream = _client.GetStream();
 
             // 1. Hello / Acknowledge
-            await PerformHandshakeAsync(uri.AbsoluteUri);
+            await PerformHandshakeAsync(uri.AbsoluteUri, cancellationToken);
 
             // 2. Open Secure Channel
-            await OpenSecureChannelAsync();
+            await OpenSecureChannelAsync(cancellationToken);
         }
 
-        public async Task CreateSessionAsync(string applicationUri, string productUri, string sessionName)
+        public async Task CreateSessionAsync(string applicationUri, string productUri, string sessionName, CancellationToken cancellationToken = default)
         {
             // generate session client nonce
             _sessionClientNonce = new byte[32];
@@ -189,7 +189,7 @@ namespace LiteUa.Transport
                 MaxResponseMessageSize = 0
             };
 
-            var response = await SendRequestAsync<CreateSessionRequest, CreateSessionResponse>(req);
+            var response = await SendRequestAsync<CreateSessionRequest, CreateSessionResponse>(req, cancellationToken);
 
             _authenticationToken = response.AuthenticationToken ?? new NodeId(0,0);
             _sessionServerNonce = response.ServerNonce;
@@ -197,7 +197,7 @@ namespace LiteUa.Transport
             /// TODO: Validate server certificate
         }
 
-        public async Task ActivateSessionAsync(IUserIdentity identity)
+        public async Task ActivateSessionAsync(IUserIdentity identity, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(identity);
 
@@ -236,13 +236,13 @@ namespace LiteUa.Transport
                 UserTokenSignature = new SignatureData()
             };
 
-            var response = await SendRequestAsync<ActivateSessionRequest, ActivateSessionResponse>(req);
+            var response = await SendRequestAsync<ActivateSessionRequest, ActivateSessionResponse>(req, cancellationToken);
 
             if (response.ServerNonce != null && response.ServerNonce.Length > 0)
                 _sessionServerNonce = response.ServerNonce;
         }
 
-        public async Task<DataValue[]?> ReadAsync(NodeId[] nodesToRead)
+        public async Task<DataValue[]?> ReadAsync(NodeId[] nodesToRead, CancellationToken cancellationToken = default)
         {
             // build request
             var readValues = new ReadValueId[nodesToRead.Length];
@@ -262,12 +262,12 @@ namespace LiteUa.Transport
                 MaxAge = 0
             };
 
-            var response = await SendRequestAsync<ReadRequest, ReadResponse>(req);
+            var response = await SendRequestAsync<ReadRequest, ReadResponse>(req, cancellationToken);
 
             return response.Results;
         }
 
-        public async Task<StatusCode[]?> WriteAsync(NodeId[] nodes, DataValue[] values)
+        public async Task<StatusCode[]?> WriteAsync(NodeId[] nodes, DataValue[] values, CancellationToken cancellationToken = default)
         {
             if (nodes.Length != values.Length) throw new ArgumentException("Nodes and Values count mismatch");
 
@@ -286,11 +286,11 @@ namespace LiteUa.Transport
                 NodesToWrite = writeValues
             };
 
-            var response = await SendRequestAsync<WriteRequest, WriteResponse>(req);
+            var response = await SendRequestAsync<WriteRequest, WriteResponse>(req, cancellationToken);
             return response.Results;
         }
 
-        public async Task<ReferenceDescription[]?> BrowseAsync(NodeId nodeId)
+        public async Task<ReferenceDescription[]?> BrowseAsync(NodeId nodeId, CancellationToken cancellationToken = default)
         {
             var req = new BrowseRequest
             {
@@ -308,7 +308,7 @@ namespace LiteUa.Transport
                 RequestedMaxReferencesPerNode = 0 // All
             };
 
-            var response = await SendRequestAsync<BrowseRequest, BrowseResponse>(req);
+            var response = await SendRequestAsync<BrowseRequest, BrowseResponse>(req, cancellationToken);
 
             if (response.Results != null && response.Results.Length > 0)
             {
@@ -317,7 +317,7 @@ namespace LiteUa.Transport
             return [];
         }
 
-        public async Task<Variant[]> CallAsync(NodeId objectId, NodeId methodId, params Variant[] inputArguments)
+        public async Task<Variant[]> CallAsync(NodeId objectId, NodeId methodId, CancellationToken cancellationToken = default, params Variant[] inputArguments)
         {
             var req = new CallRequest(
                 [
@@ -327,7 +327,7 @@ namespace LiteUa.Transport
                 RequestHeader = CreateRequestHeader()
             };
 
-            var response = await SendRequestAsync<CallRequest, CallResponse>(req);
+            var response = await SendRequestAsync<CallRequest, CallResponse>(req, cancellationToken);
 
             if (response.Results == null || response.Results.Length == 0)
                 throw new Exception("Empty Call Result");
@@ -351,7 +351,7 @@ namespace LiteUa.Transport
             }
         }
 
-        private async Task RenewSecureChannelAsync()
+        private async Task RenewSecureChannelAsync(CancellationToken cancellationToken)
         {
             if (_stream == null)
                 throw new InvalidOperationException("Not connected to server.");
@@ -481,7 +481,7 @@ namespace LiteUa.Transport
                     await _stream.WriteAsync(packet);
                 }
 
-                await ReceiveOpenSecureChannelResponse();
+                await ReceiveOpenSecureChannelResponse(cancellationToken);
             }
             finally
             {
@@ -489,7 +489,7 @@ namespace LiteUa.Transport
             }
         }
 
-        private void StartRenewalLoop(uint lifetimeMs)
+        private void StartRenewalLoop(uint lifetimeMs, CancellationToken cancellationToken)
         {
             // kill old loop
             _renewCts?.Cancel();
@@ -508,8 +508,7 @@ namespace LiteUa.Transport
                     await Task.Delay(delayMs, _renewCts.Token);
                     if (!_renewCts.IsCancellationRequested)
                     {
-                        // Console.WriteLine($"Renewing Secure Channel (Lifetime: {lifetimeMs}ms)...");
-                        await RenewSecureChannelAsync();
+                        await RenewSecureChannelAsync(cancellationToken);
                     }
                 }
                 catch (TaskCanceledException) { }
@@ -521,7 +520,7 @@ namespace LiteUa.Transport
             }, _renewCts.Token);
         }
 
-        private async Task PerformHandshakeAsync(string url)
+        private async Task PerformHandshakeAsync(string url, CancellationToken cancellationToken)
         {
             if (_stream == null)
                 throw new InvalidOperationException("Not connected to server.");
@@ -539,7 +538,7 @@ namespace LiteUa.Transport
             await _stream.WriteAsync(sendBuffer);
 
             byte[] headerBuffer = new byte[8];
-            await ReadExactAsync(_stream, headerBuffer, 8);
+            await ReadExactAsync(_stream, headerBuffer, 8, cancellationToken);
 
             using var msHeader = new MemoryStream(headerBuffer);
             var reader = new OpcUaBinaryReader(msHeader);
@@ -550,7 +549,7 @@ namespace LiteUa.Transport
             uint bodyLength = length - 8;
 
             byte[] bodyBuffer = new byte[bodyLength];
-            await ReadExactAsync(_stream, bodyBuffer, (int)bodyLength);
+            await ReadExactAsync(_stream, bodyBuffer, (int)bodyLength, cancellationToken);
 
             using var msBody = new MemoryStream(bodyBuffer);
             var bodyReader = new OpcUaBinaryReader(msBody);
@@ -581,7 +580,7 @@ namespace LiteUa.Transport
             }
         }
 
-        private async Task OpenSecureChannelAsync()
+        private async Task OpenSecureChannelAsync(CancellationToken cancellationToken)
         {
             if (_stream == null)
                 throw new InvalidOperationException("Not connected to server.");
@@ -723,16 +722,16 @@ namespace LiteUa.Transport
                 await _stream.WriteAsync(packet);
             }
 
-            await ReceiveOpenSecureChannelResponse();
+            await ReceiveOpenSecureChannelResponse(cancellationToken);
         }
 
-        private async Task ReceiveOpenSecureChannelResponse()
+        private async Task ReceiveOpenSecureChannelResponse(CancellationToken cancellationToken)
         {
             if (_stream == null)
                 throw new InvalidOperationException("Not connected to server.");
 
             byte[] headerBase = new byte[8];
-            await ReadExactAsync(_stream, headerBase, 8);
+            await ReadExactAsync(_stream, headerBase, 8, cancellationToken);
 
             string msgType;
             uint msgSize;
@@ -749,7 +748,7 @@ namespace LiteUa.Transport
             {
                 int errLen = (int)(msgSize - 8);
                 byte[] errBody = new byte[errLen];
-                await ReadExactAsync(_stream, errBody, errLen);
+                await ReadExactAsync(_stream, errBody, errLen, cancellationToken);
 
                 using var msErr = new MemoryStream(errBody);
                 var rErr = new OpcUaBinaryReader(msErr);
@@ -761,14 +760,14 @@ namespace LiteUa.Transport
             if (msgType != "OPN") throw new Exception($"Expected OPN, got {msgType}");
 
             byte[] channelIdBuf = new byte[4];
-            await ReadExactAsync(_stream, channelIdBuf, 4);
+            await ReadExactAsync(_stream, channelIdBuf, 4, cancellationToken);
 
             SecureChannelId = BitConverter.ToUInt32(channelIdBuf, 0);
 
             // Body Size = Total Size - 12 Bytes Header (8 Base + 4 ChannelId)
             int bodyLen = (int)(msgSize - 12);
             byte[] rawBody = new byte[bodyLen];
-            await ReadExactAsync(_stream, rawBody, bodyLen);
+            await ReadExactAsync(_stream, rawBody, bodyLen, cancellationToken);
 
             using var msRaw = new MemoryStream(rawBody);
             var rRaw = new OpcUaBinaryReader(msRaw);
@@ -853,16 +852,16 @@ namespace LiteUa.Transport
                 _securityPolicy.DeriveKeys(_clientNonce, response.ServerNonce);
             }
 
-            StartRenewalLoop(response.SecurityToken.RevisedLifetime);
+            StartRenewalLoop(response.SecurityToken.RevisedLifetime, cancellationToken);
         }
 
-        public async Task<TResponse> SendRequestAsync<TRequest, TResponse>(TRequest request)
+        public async Task<TResponse> SendRequestAsync<TRequest, TResponse>(TRequest request, CancellationToken cancellationToken = default)
             where TResponse : new()
         {
             if (_stream == null)
                 throw new InvalidOperationException("Not connected to server.");
 
-            await _lock.WaitAsync();
+            await _lock.WaitAsync(cancellationToken);
             try
             {
                 byte[] bodyBytes;
@@ -908,11 +907,12 @@ namespace LiteUa.Transport
                     // Header MSG
                     var msgHeader = new SecureConversationMessageHeader
                     {
-                        MessageType = "MSG",
+                        MessageType = request is CloseSecureChannelRequest ? "CLO" : "MSG",
                         ChunkType = 'F',
                         MessageSize = (uint)totalSize,
                         SecureChannelId = SecureChannelId
                     };
+
                     msgHeader.Encode(w);
 
                     // Symmetric Security Header (TokenId only)
@@ -967,11 +967,11 @@ namespace LiteUa.Transport
 
                     Array.Copy(encryptedData, 0, raw, cryptoStartOffset, encryptedData.Length);
 
-                    await _stream.WriteAsync(raw);
+                    await _stream.WriteAsync(raw, cancellationToken);
                 }
 
                 // 4. Response
-                return await ReceiveResponseAsync<TResponse>();
+                return await ReceiveResponseAsync<TResponse>(cancellationToken);
             }
             finally
             {
@@ -979,13 +979,13 @@ namespace LiteUa.Transport
             }
         }
 
-        private async Task<TResponse> ReceiveResponseAsync<TResponse>() where TResponse : new()
+        private async Task<TResponse> ReceiveResponseAsync<TResponse>(CancellationToken cancellationToken) where TResponse : new()
         {
             if (_stream == null)
                 throw new InvalidOperationException("Not connected to server.");
 
             byte[] headerBase = new byte[8];
-            await ReadExactAsync(_stream, headerBase, 8);
+            await ReadExactAsync(_stream, headerBase, 8, cancellationToken);
 
             string msgType;
             uint msgSize;
@@ -1002,7 +1002,7 @@ namespace LiteUa.Transport
             {
                 int errLen = (int)(msgSize - 8);
                 byte[] errBody = new byte[errLen];
-                await ReadExactAsync(_stream, errBody, errLen);
+                await ReadExactAsync(_stream, errBody, errLen, cancellationToken);
 
                 using var msErr = new MemoryStream(errBody);
                 var rErr = new OpcUaBinaryReader(msErr);
@@ -1014,13 +1014,13 @@ namespace LiteUa.Transport
             if (msgType != "MSG") throw new Exception($"Expected MSG, got {msgType}");
 
             byte[] channelIdBuf = new byte[4];
-            await ReadExactAsync(_stream, channelIdBuf, 4);
+            await ReadExactAsync(_stream, channelIdBuf, 4, cancellationToken);
             ///TODO: Check channel id
 
             // Body Size = Total Size - 12 Bytes Header
             int totalBodyLen = (int)(msgSize - 12);
             byte[] fullBody = new byte[totalBodyLen];
-            await ReadExactAsync(_stream, fullBody, totalBodyLen);
+            await ReadExactAsync(_stream, fullBody, totalBodyLen, cancellationToken);
 
             byte[] decryptedBytes;
             int cryptoStartOffset = 4; // TokenId Size
@@ -1168,7 +1168,6 @@ namespace LiteUa.Transport
             return response;
         }
 
-        // Public API Method
         public async Task<GetEndpointsResponse> GetEndpointsAsync()
         {
             var req = new GetEndpointsRequest
@@ -1180,12 +1179,12 @@ namespace LiteUa.Transport
             return await SendRequestAsync<GetEndpointsRequest, GetEndpointsResponse>(req);
         }
 
-        private static async Task<int> ReadExactAsync(NetworkStream stream, byte[] buffer, int count)
+        private static async Task<int> ReadExactAsync(NetworkStream stream, byte[] buffer, int count, CancellationToken cancellationToken)
         {
             int totalRead = 0;
             while (totalRead < count)
             {
-                int read = await stream.ReadAsync(buffer.AsMemory(totalRead, count - totalRead));
+                int read = await stream.ReadAsync(buffer.AsMemory(totalRead, count - totalRead), cancellationToken);
                 if (read == 0) throw new EndOfStreamException("Connection closed by remote host.");
                 totalRead += read;
             }
@@ -1200,8 +1199,15 @@ namespace LiteUa.Transport
 
         public void Dispose()
         {
+            try
+            {
+                DisconnectAsync().Wait(2000);
+            }
+            catch { }
+
             _stream?.Dispose();
             _client?.Dispose();
+            _renewCts?.Cancel();
             GC.SuppressFinalize(this);
         }
     }
