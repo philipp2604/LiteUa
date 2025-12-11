@@ -90,6 +90,39 @@ namespace LiteUa.Transport
             _securityMode = securityMode;
         }
 
+        public async Task<NodeId?[]> ResolveNodeIdsAsync(NodeId startNode, string[] paths, CancellationToken token = default)
+        {
+            var browsePaths = new BrowsePath[paths.Length];
+            for (int i = 0; i < paths.Length; i++)
+            {
+                browsePaths[i] = new BrowsePath(startNode, BrowsePathParser.Parse(paths[i]));
+            }
+
+            var req = new TranslateBrowsePathsToNodeIdsRequest
+            {
+                RequestHeader = CreateRequestHeader(),
+                BrowsePaths = browsePaths
+            };
+
+            var res = await SendRequestAsync<TranslateBrowsePathsToNodeIdsRequest, TranslateBrowsePathsToNodeIdsResponse>(req, token);
+
+            var results = new NodeId?[paths.Length];
+            for (int i = 0; i < res.Results?.Length; i++)
+            {
+                var r = res.Results[i];
+                if (r.StatusCode.IsGood && r.Targets != null && r.Targets.Length > 0)
+                {
+                    // take the first one
+                    results[i] = r.Targets[0].TargetId?.NodeId;
+                }
+                else
+                {
+                    results[i] = null; // not found
+                }
+            }
+            return results;
+        }
+
         public async Task<MonitoredItemModifyResult[]?> ModifyMonitoredItemsAsync(
             uint subscriptionId,
             uint[] monitoredItemIds,
@@ -124,6 +157,93 @@ namespace LiteUa.Transport
 
             var response = await SendRequestAsync<ModifyMonitoredItemsRequest, ModifyMonitoredItemsResponse>(req, token);
             return response.Results;
+        }
+
+        public async Task<ReferenceDescription[][]> BrowseAsync(NodeId[] nodesToBrowse, uint maxRefs = 0, CancellationToken token = default)
+        {
+            // 1. Initial request
+            var browseDescs = new BrowseDescription[nodesToBrowse.Length];
+            for (int i = 0; i < nodesToBrowse.Length; i++)
+            {
+                browseDescs[i] = new BrowseDescription(nodesToBrowse[i])
+                {
+                    BrowseDirection = BrowseDirection.Forward,
+                    IncludeSubtypes = true,
+                    NodeClassMask = 0,
+                    ResultMask = 63
+                };
+            }
+
+            var req = new BrowseRequest
+            {
+                RequestHeader = CreateRequestHeader(),
+                NodesToBrowse = browseDescs,
+                RequestedMaxReferencesPerNode = maxRefs
+            };
+
+            var response = await SendRequestAsync<BrowseRequest, BrowseResponse>(req, token);
+
+            // prepare result: one list per input node
+            var allReferences = new List<ReferenceDescription>[nodesToBrowse.Length];
+            for (int i = 0; i < allReferences.Length; i++) allReferences[i] = [];
+
+            // list of continuation points
+            var pendingContinuationPoints = new List<(int OriginalIndex, byte[] Point)>();
+
+            // first round
+            for (int i = 0; i < response.Results?.Length; i++)
+            {
+                var result = response.Results[i];
+                if (result.References != null)
+                {
+                    allReferences[i].AddRange(result.References);
+                }
+
+                if (result.ContinuationPoint != null && result.ContinuationPoint.Length > 0)
+                {
+                    pendingContinuationPoints.Add((i, result.ContinuationPoint));
+                }
+            }
+
+            // 2. Paging Loop (BrowseNext)
+            while (pendingContinuationPoints.Count > 0)
+            {
+                var nextReq = new BrowseNextRequest
+                {
+                    RequestHeader = CreateRequestHeader(),
+                    ReleaseContinuationPoints = false,
+                    ContinuationPoints = [.. pendingContinuationPoints.Select(x => x.Point)]
+                };
+
+                var currentBatchIndices = pendingContinuationPoints.Select(x => x.OriginalIndex).ToList();
+                pendingContinuationPoints.Clear();
+
+                var nextResp = await SendRequestAsync<BrowseNextRequest, BrowseNextResponse>(nextReq, token);
+
+                for (int i = 0; i < nextResp?.Results?.Length; i++)
+                {
+                    var result = nextResp?.Results[i];
+                    int originalIndex = currentBatchIndices[i];
+
+                    if (result?.References != null)
+                    {
+                        allReferences[originalIndex].AddRange(result.References);
+                    }
+
+                    if (result?.ContinuationPoint != null && result.ContinuationPoint.Length > 0)
+                    {
+                        pendingContinuationPoints.Add((originalIndex, result.ContinuationPoint));
+                    }
+                }
+            }
+
+            var finalResult = new ReferenceDescription[nodesToBrowse.Length][];
+            for (int i = 0; i < allReferences.Length; i++)
+            {
+                finalResult[i] = [.. allReferences[i]];
+            }
+
+            return finalResult;
         }
 
         public async Task<StatusCode[]?> SetMonitoringModeAsync(
@@ -1009,6 +1129,7 @@ namespace LiteUa.Transport
                     else if (request is ModifyMonitoredItemsRequest mmir) mmir.Encode(w);
                     else if (request is SetMonitoringModeRequest smmr) smmr.Encode(w);
                     else if (request is SetPublishingModeRequest spmr) spmr.Encode(w);
+                    else if (request is TranslateBrowsePathsToNodeIdsRequest tbptnidr) tbptnidr.Encode(w);
                     else throw new NotImplementedException($"Request Type {typeof(TRequest).Name} not supported.");
 
                     bodyBytes = ms.ToArray();
@@ -1324,6 +1445,12 @@ namespace LiteUa.Transport
                 if (typeId.NumericIdentifier != ModifyMonitoredItemsResponse.NodeId.NumericIdentifier)
                     throw new Exception($"Unexpected Response Type for ModifyMonitoredItemsResponse: {typeId.NumericIdentifier}");
                 mmir.Decode(r);
+            }
+            else if (response is TranslateBrowsePathsToNodeIdsResponse tbptnir)
+            {
+                if (typeId.NumericIdentifier != TranslateBrowsePathsToNodeIdsResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for TranslateBrowsePathsToNodeIdsResponse: {typeId.NumericIdentifier}");
+                tbptnir.Decode(r);
             }
             else
             {

@@ -12,24 +12,23 @@ namespace LiteUa.Stack.View
     /// TODO: Add unit tests
     /// TODO: fix documentation comments
     /// TODO: Add ToString() method
-    public class BrowseNextResponse
+    public class TranslateBrowsePathsToNodeIdsResponse
     {
-        public static readonly NodeId NodeId = new(536);
+        public static readonly NodeId NodeId = new(557);
 
         public ResponseHeader? ResponseHeader { get; set; }
-        public BrowseResult[]? Results { get; set; }
+        public BrowsePathResult[]? Results { get; set; }
         public DiagnosticInfo?[]? DiagnosticInfos { get; set; }
 
         public void Decode(OpcUaBinaryReader reader)
         {
-            // Exakt wie BrowseResponse.Decode
             ResponseHeader = ResponseHeader.Decode(reader);
 
             int count = reader.ReadInt32();
             if (count > 0)
             {
-                Results = new BrowseResult[count];
-                for (int i = 0; i < count; i++) Results[i] = BrowseResult.Decode(reader);
+                Results = new BrowsePathResult[count];
+                for (int i = 0; i < count; i++) Results[i] = BrowsePathResult.Decode(reader);
             }
 
             if (reader.Position < reader.Length)
