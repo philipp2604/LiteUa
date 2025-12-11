@@ -3,11 +3,13 @@ using LiteUa.Client;
 using LiteUa.Encoding;
 using LiteUa.Security;
 using LiteUa.Security.Policies;
+using LiteUa.Stack.Attribute;
 using LiteUa.Stack.Discovery;
 using LiteUa.Stack.Method;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
 using LiteUa.Stack.Subscription;
+using LiteUa.Stack.Subscription.MonitoredItem;
 using LiteUa.Transport;
 using System;
 using System.Collections.Generic;
@@ -703,6 +705,82 @@ namespace LiteUa.Tests.IntegrationTests
             Assert.NotNull(refs);
             Assert.NotEmpty(refs);
             Assert.True(refs.Length > 2);
+        }
+
+        [Fact]
+        public async Task Modify_And_Toggle_Subscription()
+        {
+            await using (var client = new UaTcpClientChannel(TestServerUrl))
+            {
+                await client.ConnectAsync();
+                await client.CreateSessionAsync("urn:test", "urn:test", "LifecycleTest");
+                await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+
+                // 1. Create Subscription
+                var createSubReq = new CreateSubscriptionRequest
+                {
+                    RequestHeader = client.CreateRequestHeader(),
+                    RequestedPublishingInterval = 500.0,
+                    PublishingEnabled = true
+                };
+                var subRes = await client.SendRequestAsync<CreateSubscriptionRequest, CreateSubscriptionResponse>(createSubReq);
+                uint subId = subRes.SubscriptionId;
+                Assert.NotEqual((uint)0, subId);
+
+                // 2. Create Monitored Item
+                var createMonReq = new CreateMonitoredItemsRequest
+                {
+                    RequestHeader = client.CreateRequestHeader(),
+                    SubscriptionId = subId,
+                    ItemsToCreate = new[]
+                    {
+                        new MonitoredItemCreateRequest(
+
+                            new ReadValueId(new NodeId(4, 3)), // TestBool
+                            2,
+                            new MonitoringParameters() { ClientHandle = 1, SamplingInterval = 100, QueueSize = 1 }
+                        )
+                    }
+                };
+                var monRes = await client.SendRequestAsync<CreateMonitoredItemsRequest, CreateMonitoredItemsResponse>(createMonReq);
+                uint monId = monRes.Results?[0].MonitoredItemId ?? 0;
+                Assert.NotEqual((uint)0, monId);
+
+                // 3. Modify Monitored Item
+                var modResults = await client.ModifyMonitoredItemsAsync(
+                    subId,
+                    new[] { monId },
+                    new[] { (uint)1 }, // keep handle
+                    2000.0, // New interval
+                    5,      // New queue
+                    default
+                );
+                Assert.True(modResults?[0].StatusCode.IsGood);
+
+                var setMonResults = await client.SetMonitoringModeAsync(
+                    subId,
+                    new[] { monId },
+                    0, // Disabled
+                    default
+                );
+                Assert.True(setMonResults?[0].IsGood);
+
+                // 5. Set Publishing Mode (Helper)
+                var setPubResults = await client.SetPublishingModeAsync(
+                    new[] { subId },
+                    false, // Disabled
+                    default
+                );
+                Assert.True(setPubResults?[0].IsGood);
+
+                // Cleanup
+                var delReq = new DeleteSubscriptionsRequest
+                {
+                    RequestHeader = client.CreateRequestHeader(),
+                    SubscriptionIds = new[] { subId }
+                };
+                await client.SendRequestAsync<DeleteSubscriptionsRequest, DeleteSubscriptionsResponse>(delReq);
+            }
         }
 
         #region Helper classes

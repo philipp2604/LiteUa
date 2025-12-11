@@ -15,13 +15,15 @@ namespace LiteUa.Stack.Subscription
     public class StatusChangeNotification
     {
         public StatusCode Status { get; set; }
-        public DiagnosticInfo DiagnosticInfo { get; set; }
+        public DiagnosticInfo? DiagnosticInfo { get; set; }
 
         public static StatusChangeNotification Decode(OpcUaBinaryReader reader)
         {
-            var scn = new StatusChangeNotification();
-            scn.Status = StatusCode.Decode(reader);
-            scn.DiagnosticInfo = DiagnosticInfo.Decode(reader);
+            var scn = new StatusChangeNotification
+            {
+                Status = StatusCode.Decode(reader),
+                DiagnosticInfo = DiagnosticInfo.Decode(reader)
+            };
             return scn;
         }
     }

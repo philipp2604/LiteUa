@@ -12,10 +12,9 @@ namespace LiteUa.Stack.Subscription
     /// TODO: Add unit tests
     /// TODO: fix documentation comments
     /// TODO: Add ToString() method
-
-    public class DeleteSubscriptionsResponse
+    public class SetPublishingModeResponse
     {
-        public static readonly NodeId NodeId = new(850);
+        public static readonly NodeId NodeId = new(802);
         public ResponseHeader? ResponseHeader { get; set; }
         public StatusCode[]? Results { get; set; }
         public DiagnosticInfo?[]? DiagnosticInfos { get; set; }

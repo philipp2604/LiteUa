@@ -90,6 +90,76 @@ namespace LiteUa.Transport
             _securityMode = securityMode;
         }
 
+        public async Task<MonitoredItemModifyResult[]?> ModifyMonitoredItemsAsync(
+            uint subscriptionId,
+            uint[] monitoredItemIds,
+            uint[] clientHandles,
+            double samplingInterval,
+            uint queueSize,
+            CancellationToken token = default)
+        {
+            if (monitoredItemIds.Length != clientHandles.Length)
+                throw new ArgumentException("Ids and Handles count mismatch");
+
+            var itemsToModify = new MonitoredItemModifyRequest[monitoredItemIds.Length];
+            for (int i = 0; i < monitoredItemIds.Length; i++)
+            {
+                itemsToModify[i] = new MonitoredItemModifyRequest(monitoredItemIds[i], 
+                    new MonitoringParameters()
+                    {
+                        ClientHandle = clientHandles[i],
+                        SamplingInterval = samplingInterval,
+                        QueueSize = queueSize,
+                        DiscardOldest = true
+                    });
+            }
+
+            var req = new ModifyMonitoredItemsRequest
+            {
+                RequestHeader = CreateRequestHeader(),
+                SubscriptionId = subscriptionId,
+                TimestampsToReturn = 2, // Both
+                ItemsToModify = itemsToModify
+            };
+
+            var response = await SendRequestAsync<ModifyMonitoredItemsRequest, ModifyMonitoredItemsResponse>(req, token);
+            return response.Results;
+        }
+
+        public async Task<StatusCode[]?> SetMonitoringModeAsync(
+            uint subscriptionId,
+            uint[] monitoredItemIds,
+            uint monitoringMode,
+            CancellationToken token = default)
+        {
+            var req = new SetMonitoringModeRequest
+            {
+                RequestHeader = CreateRequestHeader(),
+                SubscriptionId = subscriptionId,
+                MonitoringMode = monitoringMode,
+                MonitoredItemIds = monitoredItemIds
+            };
+
+            var response = await SendRequestAsync<SetMonitoringModeRequest, SetMonitoringModeResponse>(req, token);
+            return response.Results;
+        }
+
+        public async Task<StatusCode[]?> SetPublishingModeAsync(
+            uint[] subscriptionIds,
+            bool publishingEnabled,
+            CancellationToken token = default)
+        {
+            var req = new SetPublishingModeRequest
+            {
+                RequestHeader = CreateRequestHeader(),
+                SubscriptionIds = subscriptionIds,
+                PublishingEnabled = publishingEnabled
+            };
+
+            var response = await SendRequestAsync<SetPublishingModeRequest, SetPublishingModeResponse>(req, token);
+            return response.Results;
+        }
+
         public async Task DisconnectAsync()
         {
             _renewCts?.Cancel();
@@ -936,6 +1006,9 @@ namespace LiteUa.Transport
                     else if (request is BrowseNextRequest bcr) bcr.Encode(w);
                     else if (request is DeleteMonitoredItemsRequest dmir) dmir.Encode(w);
                     else if (request is DeleteSubscriptionsRequest dsr) dsr.Encode(w);
+                    else if (request is ModifyMonitoredItemsRequest mmir) mmir.Encode(w);
+                    else if (request is SetMonitoringModeRequest smmr) smmr.Encode(w);
+                    else if (request is SetPublishingModeRequest spmr) spmr.Encode(w);
                     else throw new NotImplementedException($"Request Type {typeof(TRequest).Name} not supported.");
 
                     bodyBytes = ms.ToArray();
@@ -1233,6 +1306,24 @@ namespace LiteUa.Transport
                 if (typeId.NumericIdentifier != DeleteSubscriptionsResponse.NodeId.NumericIdentifier)
                     throw new Exception($"Unexpected Response Type for DeleteSubscriptionsResponse: {typeId.NumericIdentifier}");
                 dsr.Decode(r);
+            }
+            else if (response is SetMonitoringModeResponse smmr)
+            {
+                if (typeId.NumericIdentifier != SetMonitoringModeResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for SetMonitoringModeResponse: {typeId.NumericIdentifier}");
+                smmr.Decode(r);
+            }
+            else if (response is SetPublishingModeResponse spmr)
+            {
+                if (typeId.NumericIdentifier != SetPublishingModeResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for SetPublishingModeResponse: {typeId.NumericIdentifier}");
+                spmr.Decode(r);
+            }
+            else if (response is ModifyMonitoredItemsResponse mmir)
+            {
+                if (typeId.NumericIdentifier != ModifyMonitoredItemsResponse.NodeId.NumericIdentifier)
+                    throw new Exception($"Unexpected Response Type for ModifyMonitoredItemsResponse: {typeId.NumericIdentifier}");
+                mmir.Decode(r);
             }
             else
             {

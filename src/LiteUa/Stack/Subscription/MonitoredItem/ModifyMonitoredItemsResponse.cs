@@ -7,17 +7,16 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace LiteUa.Stack.Subscription
+namespace LiteUa.Stack.Subscription.MonitoredItem
 {
     /// TODO: Add unit tests
     /// TODO: fix documentation comments
     /// TODO: Add ToString() method
-
-    public class DeleteSubscriptionsResponse
+    public class ModifyMonitoredItemsResponse
     {
-        public static readonly NodeId NodeId = new(850);
+        public static readonly NodeId NodeId = new(766);
         public ResponseHeader? ResponseHeader { get; set; }
-        public StatusCode[]? Results { get; set; }
+        public MonitoredItemModifyResult[]? Results { get; set; }
         public DiagnosticInfo?[]? DiagnosticInfos { get; set; }
 
         public void Decode(OpcUaBinaryReader reader)
@@ -27,8 +26,8 @@ namespace LiteUa.Stack.Subscription
             int count = reader.ReadInt32();
             if (count > 0)
             {
-                Results = new StatusCode[count];
-                for (int i = 0; i < count; i++) Results[i] = StatusCode.Decode(reader);
+                Results = new MonitoredItemModifyResult[count];
+                for (int i = 0; i < count; i++) Results[i] = MonitoredItemModifyResult.Decode(reader);
             }
 
             if (reader.Position < reader.Length)

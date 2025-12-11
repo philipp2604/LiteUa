@@ -207,15 +207,13 @@ namespace LiteUa.Stack.Subscription
                                 {
                                     if(extObj.Body != null)
                                     {
-                                        using (var ms = new System.IO.MemoryStream(extObj.Body))
+                                        using var ms = new System.IO.MemoryStream(extObj.Body);
+                                        var r = new OpcUaBinaryReader(ms);
+                                        var scn = StatusChangeNotification.Decode(r);
+                                        if (scn.Status.IsBad)
                                         {
-                                            var r = new OpcUaBinaryReader(ms);
-                                            var scn = StatusChangeNotification.Decode(r);
-                                            if (scn.Status.IsBad)
-                                            {
-                                                ConnectionLost?.Invoke(new Exception($"Subscription terminated by Server: {scn.Status}"));
-                                                return;
-                                            }
+                                            ConnectionLost?.Invoke(new Exception($"Subscription terminated by Server: {scn.Status}"));
+                                            return;
                                         }
                                     }
                                 }

@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 
 namespace LiteUa.Stack.Subscription.MonitoredItem
 {
+    /// TODO: Add unit tests
+    /// TODO: fix documentation comments
+    /// TODO: Add ToString() method
     public class MonitoredItemModifyRequest(uint monitoredItemId, MonitoringParameters requestedParameters)
     {
         public uint MonitoredItemId { get; set; } = monitoredItemId;
