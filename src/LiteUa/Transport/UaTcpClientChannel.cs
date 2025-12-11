@@ -490,66 +490,6 @@ namespace LiteUa.Transport
             return response.Results;
         }
 
-        public async Task<ReferenceDescription[]?> BrowseAsync(NodeId nodeId, uint maxRefs = 0, CancellationToken cancellationToken = default)
-        {
-            var references = new List<ReferenceDescription>();
-
-            // 1. Initial request
-            var req = new BrowseRequest
-            {
-                RequestHeader = CreateRequestHeader(),
-                NodesToBrowse =
-                [
-                    new BrowseDescription(nodeId)
-                    {
-                        BrowseDirection = BrowseDirection.Forward,
-                        IncludeSubtypes = true,
-                        NodeClassMask = 0,
-                        ResultMask = 63
-                    }
-                ],
-                RequestedMaxReferencesPerNode = maxRefs
-            };
-
-            var response = await SendRequestAsync<BrowseRequest, BrowseResponse>(req, cancellationToken);
-
-            if (response.Results == null || response.Results.Length == 0) return [];
-
-            var result = response.Results[0]; // only browsed 1 node
-
-            if (result.References != null) references.AddRange(result.References);
-
-            // 2. Continuation Point Loop
-            byte[]? continuationPoint = result.ContinuationPoint;
-
-            while (continuationPoint != null && continuationPoint.Length > 0)
-            {
-                var nextReq = new BrowseNextRequest
-                {
-                    RequestHeader = CreateRequestHeader(),
-                    ReleaseContinuationPoints = false,
-                    ContinuationPoints = [continuationPoint]
-                };
-
-                var nextResp = await SendRequestAsync<BrowseNextRequest, BrowseNextResponse>(nextReq, cancellationToken);
-
-                if (nextResp.Results != null && nextResp.Results.Length > 0)
-                {
-                    var nextResult = nextResp.Results[0];
-                    if (nextResult.References != null) references.AddRange(nextResult.References);
-
-                    // Update Continuation Point
-                    continuationPoint = nextResult.ContinuationPoint;
-                }
-                else
-                {
-                    break; // Should not happen
-                }
-            }
-
-            return [.. references];
-        }
-
         public async Task<Variant[]> CallAsync(NodeId objectId, NodeId methodId, CancellationToken cancellationToken = default, params Variant[] inputArguments)
         {
             var req = new CallRequest(

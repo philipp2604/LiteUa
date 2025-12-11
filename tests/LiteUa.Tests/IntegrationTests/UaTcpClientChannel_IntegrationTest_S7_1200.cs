@@ -560,13 +560,14 @@ namespace LiteUa.Tests.IntegrationTests
             await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
 
             // Objects Folder: i=85
-            var references = await client.BrowseAsync(new NodeId(0, 85));
+            var references = await client.BrowseAsync([new NodeId(0, 85)]);
 
             Assert.NotNull(references);
             Assert.NotEmpty(references);
+            Assert.Single(references);
 
             // Check for "Server" object
-            Assert.Contains(references, r => r.BrowseName?.Name == "Server");
+            Assert.Contains(references[0], r => r.BrowseName?.Name == "Server");
         }
 
         [Fact]
@@ -700,11 +701,13 @@ namespace LiteUa.Tests.IntegrationTests
             await client.CreateSessionAsync("urn:test", "urn:test", "BrowseNext");
             await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
 
-            var refs = await client.BrowseAsync(new NodeId(0, 2253), maxRefs: 2);
+            var refs = await client.BrowseAsync([new NodeId(0, 2253)], maxRefs: 2);
 
             Assert.NotNull(refs);
             Assert.NotEmpty(refs);
-            Assert.True(refs.Length > 2);
+            Assert.Single(refs);
+            Assert.NotEmpty(refs[0]);
+            Assert.True(refs[0].Length > 2);
         }
 
         [Fact]

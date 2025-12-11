@@ -50,7 +50,7 @@ namespace LiteUa.BuiltIn
             ///TODO: PicoSeconds (Bits 4 and 5)
 
             byte mask = reader.ReadByte();
-
+            
             if ((mask & 0x01) != 0) dv.Value = Variant.Decode(reader);
             if ((mask & 0x02) != 0) dv.StatusCode = StatusCode.Decode(reader);
             if ((mask & 0x04) != 0) dv.SourceTimestamp = reader.ReadDateTime();
@@ -71,7 +71,6 @@ namespace LiteUa.BuiltIn
             if (StatusCode.Code != 0) mask |= 0x02;
 
             if (SourceTimestamp != DateTime.MinValue) mask |= 0x04;
-
             writer.WriteByte(mask);
 
             Value?.Encode(writer);
