@@ -1,7 +1,6 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Encoding;
 using LiteUa.Stack.Attribute;
-using LiteUa.Stack.Subscription;
 using LiteUa.Stack.Subscription.MonitoredItem;
 using LiteUa.Transport;
 using System;
@@ -10,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace LiteUa.Client
+namespace LiteUa.Stack.Subscription
 {
     public class Subscription(UaTcpClientChannel channel) : IAsyncDisposable, IDisposable
     {
@@ -203,7 +202,23 @@ namespace LiteUa.Client
                                         }
                                     }
                                 }
-                                /// TODO: EventNotificationList (916) or StatusChangeNotification (820) can be handled here as well.
+                                // StatusChangeNotification 820
+                                else if (extObj.TypeId.NumericIdentifier == 820 && extObj.Encoding == 0x01)
+                                {
+                                    if(extObj.Body != null)
+                                    {
+                                        using (var ms = new System.IO.MemoryStream(extObj.Body))
+                                        {
+                                            var r = new OpcUaBinaryReader(ms);
+                                            var scn = StatusChangeNotification.Decode(r);
+                                            if (scn.Status.IsBad)
+                                            {
+                                                ConnectionLost?.Invoke(new Exception($"Subscription terminated by Server: {scn.Status}"));
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -232,6 +247,18 @@ namespace LiteUa.Client
             {
                 await _channel.DeleteSubscriptionsAsync([_subscriptionId]);
                 _subscriptionId = 0;
+            }
+        }
+
+        public async Task DeleteMonitoredItemsAsync(uint[] monitoredItemIds)
+        {
+            try
+            {
+                await _channel.DeleteMonitoredItemsAsync(_subscriptionId, monitoredItemIds);
+            }
+            catch (Exception)
+            {
+                throw;
             }
         }
 

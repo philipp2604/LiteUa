@@ -2,6 +2,7 @@
 using LiteUa.Security.Policies;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
+using LiteUa.Stack.Subscription;
 using LiteUa.Transport;
 using System;
 using System.Collections.Concurrent;
@@ -212,12 +213,20 @@ namespace LiteUa.Client
             public async Task RestoreItemsAsync()
             {
                 if (LiveSubscription == null) return;
+
                 lock (_lock)
                 {
-                    foreach (var kvp in _items)
+                    if (_items.Count == 0) return;
+
+                    var nodeIds = _items.Values.ToArray();
+                    var handles = _items.Keys.ToArray();
+                    try
                     {
-                        // TODO: Bulk Create
-                        LiveSubscription.CreateMonitoredItemAsync(kvp.Value, kvp.Key).Wait();
+                        LiveSubscription.CreateMonitoredItemsAsync(nodeIds, handles).Wait();
+                    }
+                    catch (Exception)
+                    {
+                        throw;
                     }
                 }
             }
