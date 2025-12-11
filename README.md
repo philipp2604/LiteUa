@@ -8,7 +8,7 @@ Unlike other libraries that wrap the official OPC Foundation .NET Stack (which i
 >
 > This library is currently in an early development stage. While the core functionality (Secure Connection, Read/Write, Subscriptions) is implemented and tested, it does not yet cover the entire 1000+ page OPC UA specification. Use with caution in production environments.
 
-## 🚀 Why S7Nexus?
+## 🚀 Why LiteUa?
 
 - **Zero 3rd Party Dependencies**: The core library is built directly on `System.Net.Sockets` and `System.Buffers`. No dependency on the official OPC Foundation Stack. No GPL viral licensing issues.
 - **Pure C#**: Fully managed code without native wrappers.
@@ -46,11 +46,12 @@ LiteUa covers the most important features required for HMI/SCADA and IoT connect
 
 ## 🚧 Limitations / Roadmap
 
-The following features are **not** yet implemented:
+The following features are **not** (yet) implemented:
 - Events & Alarms (EventNotificationList).
 - History Access (HDA).
 - Complex Discovery Services (GDS).
 - XML Encoding (only Binary is supported).
+- Other Security Policies / Algorithms than Basic256Sha256.
 
 ## 📦 Architecture
 
@@ -72,3 +73,6 @@ Contributions are welcome! Since this is a "from scratch" implementation, please
 This project is licensed under the **Apache License 2.0**. See the [LICENSE](./LICENSE.txt) file for details.
 
 You are free to use, modify, and distribute this software in **commercial** and **private** applications.
+
+---
+*Built with ❤️ and a lot of reverse engineering.*
