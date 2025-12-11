@@ -74,7 +74,7 @@ namespace LiteUa.Client
                     if(bucket.LiveSubscription != null)
                         await bucket.LiveSubscription.CreateMonitoredItemAsync(nodeId, handle);
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     throw;
                 }
@@ -112,7 +112,7 @@ namespace LiteUa.Client
                         lock (_reconnectLock) { _isConnected = true; _isReconnecting = false; }
                         ConnectionStatusChanged?.Invoke(true);
                     }
-                    catch (Exception ex)
+                    catch (Exception)
                     {
                         if (!_lifecycleCts.IsCancellationRequested)
                         {
@@ -127,7 +127,7 @@ namespace LiteUa.Client
             }
         }
 
-        private async Task ConnectAndRestoreAsync(CancellationToken cancellationToken)
+        private async Task ConnectAndRestoreAsync()
         {
             // close old channel
             if (_channel != null)
@@ -141,9 +141,9 @@ namespace LiteUa.Client
 
             // create new channel
             _channel = new UaTcpClientChannel(_endpointUrl, _policy, _clientCert, _serverCert, _securityMode);
-            await _channel.ConnectAsync(cancellationToken);
-            await _channel.CreateSessionAsync("urn:s7nexus:resilient", "urn:s7nexus", "Monitor", cancellationToken);
-            await _channel.ActivateSessionAsync(_userIdentity, cancellationToken);
+            await _channel.ConnectAsync();
+            await _channel.CreateSessionAsync("urn:s7nexus:resilient", "urn:s7nexus", "Monitor");
+            await _channel.ActivateSessionAsync(_userIdentity);
 
             // 3. Restore
             foreach (var bucket in _buckets.Values)
@@ -153,7 +153,7 @@ namespace LiteUa.Client
             }
         }
 
-        // --- DISPOSE IMPLEMENTIERUNG ---
+        // --- DISPOSE  ---
 
         public async ValueTask DisposeAsync()
         {

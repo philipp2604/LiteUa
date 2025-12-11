@@ -318,7 +318,7 @@ namespace LiteUa.Transport
                         ResultMask = 63
                     }
                 ],
-                RequestedMaxReferencesPerNode = 2
+                RequestedMaxReferencesPerNode = maxRefs
             };
 
             var response = await SendRequestAsync<BrowseRequest, BrowseResponse>(req, cancellationToken);

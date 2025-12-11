@@ -27,6 +27,56 @@ namespace LiteUa.Client
         public event Action<uint, DataValue>? DataChanged;
         public event Action<Exception>? ConnectionLost;
 
+        public async Task<uint[]> CreateMonitoredItemsAsync(NodeId[] nodeIds, uint[] clientHandles)
+        {
+            if (nodeIds.Length != clientHandles.Length) throw new ArgumentException("Count mismatch");
+
+            var items = new MonitoredItemCreateRequest[nodeIds.Length];
+            for (int i = 0; i < nodeIds.Length; i++)
+            {
+                items[i] = new MonitoredItemCreateRequest(
+                    new ReadValueId(nodeIds[i]), 
+                    2, // Reporting
+                    new MonitoringParameters()
+                    {
+                        ClientHandle = clientHandles[i],
+                        SamplingInterval = -1, // subscription default
+                        QueueSize = 1
+                    }
+                );
+            }
+
+            var req = new CreateMonitoredItemsRequest
+            {
+                RequestHeader = _channel.CreateRequestHeader(),
+                SubscriptionId = _subscriptionId,
+                ItemsToCreate = items,
+                TimestampsToReturn = 2 // Both
+            };
+
+            var res = await _channel.SendRequestAsync<CreateMonitoredItemsRequest, CreateMonitoredItemsResponse>(req);
+
+            if(res.Results != null)
+            {
+
+            }
+
+            var results = new uint[res.Results?.Length ?? 0];
+            for (int i = 0; i < (res.Results?.Length ?? -1); i++)
+            {
+                if (res.Results![i].StatusCode.Code != 0)
+                {
+                    // return 0 if failed
+                    results[i] = 0;
+                }
+                else
+                {
+                    results[i] = res.Results[i].MonitoredItemId;
+                }
+            }
+            return results;
+        }
+
         public async Task CreateAsync(double publishingInterval = 1000.0)
         {
             var req = new CreateSubscriptionRequest
