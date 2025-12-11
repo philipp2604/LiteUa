@@ -7,8 +7,4 @@
     <UserSecretsId>ab43d107-dbf6-4dce-83af-da0b0eaeee3e</UserSecretsId>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.1" />
-  </ItemGroup>
-
 </Project>

@@ -1497,29 +1497,7 @@ namespace LiteUa.Transport
             }
             catch (CryptographicException)
             {
-                // 2. PKCS#7 Container (Certificate Chain)
-                try
-                {
-                    var cms = new SignedCms();
-                    cms.Decode(certBytes);
-
-                    if (cms.Certificates.Count > 0)
-                    {
-                        // first should be the instance's certificate
-                        cert = cms.Certificates[0];
-                    }
-                }
-                catch
-                {
-                    // 3. PFX/PKCS#12
-                    try
-                    {
-                        cert = X509CertificateLoader.LoadPkcs12(certBytes, null);
-                    }
-                    catch
-                    {
-                    }
-                }
+                throw new Exception($"Could not decode Server Certificate. Raw Length: {certBytes.Length} bytes.");
             }
 
             if (cert == null)
