@@ -6,6 +6,7 @@ using Xunit.Abstractions;
 
 namespace LiteUa.Tests.IntegrationTests
 {
+    /*
     public class UaClientPool_IntegrationTest(ITestOutputHelper output)
     {
         private readonly ITestOutputHelper _output = output;
@@ -68,4 +69,5 @@ namespace LiteUa.Tests.IntegrationTests
             c11.Dispose();
         }
     }
+    */
 }

@@ -36,6 +36,9 @@ namespace LiteUa.Transport
         private TcpClient? _client;
         private NetworkStream? _stream;
         private readonly string _endpointUrl;
+        private readonly string _applicationUri;
+        private readonly string _productUri;
+        private readonly string _applicationName;
 
         private readonly SemaphoreSlim _lock = new(1, 1);
 
@@ -69,20 +72,30 @@ namespace LiteUa.Transport
 
         public UaTcpClientChannel(
             string endpointUrl,
-            ISecurityPolicy? securityPolicy = null,
-            X509Certificate2? clientCertificate = null,
-            X509Certificate2? serverCertificate = null,
-            MessageSecurityMode securityMode = MessageSecurityMode.None)
+            string applicationUri,
+            string productUri,
+            string applicationName,
+            ISecurityPolicy securityPolicy,
+            MessageSecurityMode securityMode,
+            X509Certificate2? clientCertificate,
+            X509Certificate2? serverCertificate)
         {
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(endpointUrl);
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationUri);
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(productUri);
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationName);
+
             _endpointUrl = endpointUrl;
-            // Fallback
-            _securityPolicy = securityPolicy ?? new SecurityPolicyNone();
+            _applicationUri = applicationUri;
+            _productUri = productUri;
+            _applicationName = applicationName;
+            _securityPolicy = securityPolicy;
             _clientCertificate = clientCertificate;
             _serverCertificate = serverCertificate;
 
             // Generate nonce (min 32 bytes for 256bit security)
             _clientNonce = new byte[32];
-            using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+            using (var rng = RandomNumberGenerator.Create())
             {
                 rng.GetBytes(_clientNonce);
             }
@@ -342,6 +355,7 @@ namespace LiteUa.Transport
         public async Task ConnectAsync(CancellationToken cancellationToken = default)
         {
             var uri = new Uri(_endpointUrl);
+            /// TODO: throw if port invalid
             int port = uri.Port == -1 ? 4840 : uri.Port;
 
             _client = new TcpClient();
@@ -355,11 +369,11 @@ namespace LiteUa.Transport
             await OpenSecureChannelAsync(cancellationToken);
         }
 
-        public async Task CreateSessionAsync(string applicationUri, string productUri, string sessionName, CancellationToken cancellationToken = default)
+        public async Task CreateSessionAsync(string sessionName, CancellationToken cancellationToken = default)
         {
             // generate session client nonce
             _sessionClientNonce = new byte[32];
-            using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create()) rng.GetBytes(_sessionClientNonce);
+            using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(_sessionClientNonce);
 
             byte[] clientCertBytes = _clientCertificate?.RawData ?? [];
 
@@ -368,9 +382,9 @@ namespace LiteUa.Transport
                 RequestHeader = CreateRequestHeader(),
                 ClientDescription = new ClientDescription
                 {
-                    ApplicationUri = applicationUri,
-                    ProductUri = productUri,
-                    ApplicationName = new LocalizedText { Text = sessionName },
+                    ApplicationUri = _applicationUri,
+                    ProductUri = _productUri,
+                    ApplicationName = new LocalizedText { Text = _applicationName },
                     Type = ApplicationType.Client,
                     DiscoveryUrls = []
                 },
@@ -1007,7 +1021,7 @@ namespace LiteUa.Transport
                 Array.Copy(rawBody, endHeaderPos, decryptedPayload, 0, restLen);
             }
 
-            // 6. Body Deserialisieren
+            // 6. Body
             using var msDec = new MemoryStream(decryptedPayload);
             var rDec = new OpcUaBinaryReader(msDec);
             var seqHeader = new SequenceHeader
