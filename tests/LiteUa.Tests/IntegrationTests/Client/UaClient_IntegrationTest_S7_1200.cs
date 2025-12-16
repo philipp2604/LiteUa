@@ -3,75 +3,156 @@ using LiteUa.Client;
 using LiteUa.Encoding;
 using LiteUa.Security;
 using LiteUa.Security.Policies;
+using LiteUa.Stack.Attribute;
 using LiteUa.Stack.Discovery;
 using LiteUa.Stack.Method;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
 using LiteUa.Stack.Subscription;
+using LiteUa.Stack.Subscription.MonitoredItem;
 using LiteUa.Transport;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Xunit.Abstractions;
 
-namespace LiteUa.Tests.IntegrationTests
+namespace LiteUa.Tests.IntegrationTests.Client
 {
-    /*
-    [Category("IntegrationTests_S7-1500")]
-    public class UaTcpClientChannelIntegrationTests_S7_1500
+    public class UaClient_IntegrationTest_S7_1200
     {
         private readonly ITestOutputHelper _output;
-        public const string TestServerUrl = "opc.tcp://192.178.0.1:4840/";
+        public const string ServerUrl = "opc.tcp://192.178.0.1:4840/";
 
-        public UaTcpClientChannelIntegrationTests_S7_1500(ITestOutputHelper output)
+        public UaClient_IntegrationTest_S7_1200(ITestOutputHelper output)
         {
             _output = output;
             RegisterCustomTypes();
         }
 
-        ~UaTcpClientChannelIntegrationTests_S7_1500()
-        {
-            CustomUaTypeRegistry.Clear();
-        }
-
         private static void RegisterCustomTypes()
         {
-            CustomUaTypeRegistry.Register<TestStruct>(new NodeId(3, "TE_\"Variables\".\"TestStructArray\""), TestStruct.Decode, (val, w) => val.Encode(w));
-            CustomUaTypeRegistry.Register<DT_Object>(new NodeId(3, "TE_\"DT_Object\""), DT_Object.Decode, (val, w) => val.Encode(w));
+            //CustomUaTypeRegistry.Register<TestStruct>(new NodeId(4, 25), TestStruct.Decode, (val, w) => val.Encode(w));
+            //CustomUaTypeRegistry.Register<TestStruct>(new NodeId(4, 98), TestStruct.Decode, (val, w) => val.Encode(w));
+            //CustomUaTypeRegistry.Register<TestStruct>(new NodeId(4, 104), TestStruct.Decode, (val, w) => val.Encode(w));
         }
 
         [Fact]
-        public async Task Connect_To_Server()
+        public async Task Connect_Anonymously_Without_Security_And_Read_Node()
         {
             // 1. Arrange
-            await using var uaClient = new UaTcpClientChannel(TestServerUrl);
+            var client = UaClient.Create()
+                .ForEndpoint(ServerUrl)
+                .WithSecurity(s =>
+                {
+                    s.PolicyType = SecurityPolicyType.None;
+                    s.MessageSecurityMode = MessageSecurityMode.None;
+                    s.UserTokenType = UserTokenType.Anonymous;
+                })
+                .WithSession(s =>
+                {
+                })
+                .WithPool(p =>
+                {
+                    p.MaxSize = 1;
+                });
+
+            await using var uaClient = client.Build();
+            await uaClient.Connect();
 
             // 2. Act
-            await uaClient.ConnectAsync();
+            var result = await uaClient.ReadNodesAsync([new NodeId(0, 2254)]); // server array
 
             // 3. Assert
-            Assert.True(uaClient.ReceiveBufferSize > 0);
-            Assert.True(uaClient.SendBufferSize > 0);
+            Assert.NotNull(result);
+            Assert.NotEmpty(result);
+            Assert.Contains("urn:SIMATIC.S7-1200.OPC-UA.Application", ((string?[]?)result[0].Value?.Value)?[0]);
         }
 
         [Fact]
-        public async Task GetEndpoints_From_Server()
+        public async Task Connect_And_Login_With_Security_And_Read_Node()
         {
             // 1. Arrange
-            await using var client = new UaTcpClientChannel(TestServerUrl);
-            await client.ConnectAsync();
+            var cert = CertificateFactory.CreateSelfSignedCertificate("LiteUa Client", "urn:LiteUa:client");
+
+            var client = UaClient.Create()
+                .ForEndpoint(ServerUrl)
+                .WithSecurity(s =>
+                {
+                    s.PolicyType = SecurityPolicyType.Basic256Sha256;
+                    s.MessageSecurityMode = MessageSecurityMode.SignAndEncrypt;
+                    s.UserTokenType = UserTokenType.Username;
+                    s.Username = "username";
+                    s.Password = "Password1"; // you don't even have to try ;-)
+                    s.ClientCertificate = cert;
+                    s.AutoAcceptUntrustedCertificates = true;
+                })
+                .WithSession(s =>
+                {
+                })
+                .WithPool(p =>
+                {
+                    p.MaxSize = 1;
+                });
+
+            await using var uaClient = client.Build();
+            await uaClient.Connect();
 
             // 2. Act
-            var endpointsResponse = await client.GetEndpointsAsync();
+            var result = await uaClient.ReadNodesAsync([new NodeId(0, 2254)]); // server array
 
             // 3. Assert
-            Assert.NotNull(endpointsResponse);
-            Assert.NotNull(endpointsResponse.Endpoints);
-            Assert.NotEmpty(endpointsResponse.Endpoints);
+            Assert.NotNull(result);
+            Assert.NotEmpty(result);
+            Assert.Contains("urn:SIMATIC.S7-1200.OPC-UA.Application", ((string?[]?)result[0].Value?.Value)?[0]);
         }
 
+        [Fact]
+        public async Task Connect_And_Bulk_Read_Nodes()
+        {
+            // 1. Arrange
+            var client = UaClient.Create()
+                .ForEndpoint(ServerUrl)
+                .WithSecurity(s =>
+                {
+                    s.PolicyType = SecurityPolicyType.None;
+                    s.MessageSecurityMode = MessageSecurityMode.None;
+                    s.UserTokenType = UserTokenType.Anonymous;
+                })
+                .WithSession(s =>
+                {
+                })
+                .WithPool(p =>
+                {
+                    p.MaxSize = 1;
+                });
+
+            await using var uaClient = client.Build();
+
+            var nodesToRead = new NodeId[]
+            {
+                new(2271), // LocaleIdArray
+                new(11702), // MaxArrayLength
+                new(12911) // MaxByteStringLength
+            };
+
+            // 2. Act
+            await uaClient.Connect();
+            var results = await uaClient.ReadNodesAsync(nodesToRead); // server namespace array
+
+            // 3. Assert
+            Assert.NotNull(results);
+            Assert.NotEmpty(results);
+            Assert.Equal(3, results.Length);
+            Assert.NotNull(results[0]);
+            Assert.NotNull(results[1]);
+            Assert.NotNull(results[2]);
+            Assert.True(results[0].StatusCode.IsGood);
+            Assert.True(results[1].StatusCode.IsGood);
+            Assert.True(results[2].StatusCode.IsGood);
+        }
+
+        /*
         [Fact]
         public async Task Establish_Secure_Channel_Basic256Sha256_SignAndEncrypt()
         {
@@ -243,56 +324,56 @@ namespace LiteUa.Tests.IntegrationTests
         [Fact]
         public async Task Read_All_S7_Datatypes_Correctly()
         {
-            var testConfigs = new (string Name, NodeId NodeId, BuiltInType Type, bool IsArray)[]
+            var testConfigs = new (string Name, uint NodeId, BuiltInType Type, bool IsArray)[]
             {
-                ("TestBool",        new(3, "\"Variables\".\"TestBool\""), BuiltInType.Boolean, false),
-                ("TestBoolArray",   new(3, "\"Variables\".\"TestBoolArray\""), BuiltInType.Boolean, true),
-                ("TestByte",        new(3, "\"Variables\".\"TestByte\""), BuiltInType.Byte,    false),
-                ("TestByteArray",   new(3, "\"Variables\".\"TestByteArray\""), BuiltInType.Byte,    true),
-                ("TestChar",        new(3, "\"Variables\".\"TestChar\""), BuiltInType.Byte,    false),
-                ("TestCharArray",   new(3, "\"Variables\".\"TestCharArray\""), BuiltInType.Byte,    true),
-                ("TestDInt",        new(3, "\"Variables\".\"TestDInt\""), BuiltInType.Int32,   false),
-                ("TestDIntArray",   new(3, "\"Variables\".\"TestDIntArray\""), BuiltInType.Int32,   true),
-                ("TestDTL",         new(3, "\"Variables\".\"TestDtl\""), BuiltInType.ExtensionObject, false),
-                ("TestDTLArray",    new(3, "\"Variables\".\"TestDtlArray\""), BuiltInType.ExtensionObject, true),
-                ("TestDWord",       new(3, "\"Variables\".\"TestDWord\""), BuiltInType.UInt32,  false),
-                ("TestDWordArray",  new(3, "\"Variables\".\"TestDWordArray\""), BuiltInType.UInt32,  true),
-                ("TestDate",        new(3, "\"Variables\".\"TestDate\""), BuiltInType.UInt16,  false),
-                ("TestDateArray",   new(3, "\"Variables\".\"TestDateArray\""), BuiltInType.UInt16,  true),
-                ("TestInt",         new(3, "\"Variables\".\"TestInt\""), BuiltInType.Int16,   false),
-                ("TestIntArray",    new(3, "\"Variables\".\"TestIntArray\""), BuiltInType.Int16,   true),
-                ("TestLReal",       new(3, "\"Variables\".\"TestLReal\""), BuiltInType.Double,  false),
-                ("TestLRealArray",  new(3, "\"Variables\".\"TestLRealArray\""), BuiltInType.Double,  true),
-                ("TestReal",        new(3, "\"Variables\".\"TestReal\""), BuiltInType.Float,   false),
-                ("TestRealArray",   new(3, "\"Variables\".\"TestRealArray\""), BuiltInType.Float,   true),
-                ("TestSInt",        new(3, "\"Variables\".\"TestSInt\""), BuiltInType.SByte,   false),
-                ("TestSIntArray",   new(3, "\"Variables\".\"TestSIntArray\""), BuiltInType.SByte,   true),
-                ("TestString",      new(3, "\"Variables\".\"TestString\""), BuiltInType.String,  false),
-                ("TestStringArray", new(3, "\"Variables\".\"TestStringArray\""), BuiltInType.String,  true),
-                ("TestStruct",      new(3, "\"Variables\".\"TestStruct\""), BuiltInType.ExtensionObject, false),
-                ("TestStructArray", new(3, "\"Variables\".\"TestStructArray\""), BuiltInType.ExtensionObject, true),
-                ("TestTime",        new(3, "\"Variables\".\"TestTime\""), BuiltInType.Int32,   false),
-                ("TestTimeArray",   new(3, "\"Variables\".\"TestTimeArray\""), BuiltInType.Int32,   true),
-                ("TestTimeOfDay",   new(3, "\"Variables\".\"TestTimeOfDay\""), BuiltInType.UInt32,  false),
-                ("TestTimeOfDayArray", new(3, "\"Variables\".\"TestTimeOfDayArray\""), BuiltInType.UInt32, true),
-                ("TestUDInt",       new(3, "\"Variables\".\"TestUDInt\""), BuiltInType.UInt32,  false),
-                ("TestUDIntArray",  new(3, "\"Variables\".\"TestUDIntArray\""), BuiltInType.UInt32,  true),
-                ("TestUInt",        new(3, "\"Variables\".\"TestUInt\""), BuiltInType.UInt16,  false),
-                ("TestUIntArray",   new(3, "\"Variables\".\"TestUIntArray\""), BuiltInType.UInt16,  true),
-                ("TestUSInt",       new(3, "\"Variables\".\"TestUSInt\""), BuiltInType.Byte,    false),
-                ("TestUSIntArray",  new(3, "\"Variables\".\"TestUSIntArray\""), BuiltInType.Byte,    true),
-                ("TestWChar",       new(3, "\"Variables\".\"TestWChar\""), BuiltInType.UInt16,  false),
-                ("TestWCharArray",  new(3, "\"Variables\".\"TestWCharArray\""), BuiltInType.UInt16,  true),
-                ("TestWString",     new(3, "\"Variables\".\"TestWString\""), BuiltInType.String,  false),
-                ("TestWStringArray",new(3, "\"Variables\".\"TestWStringArray\""), BuiltInType.String,  true),
-                ("TestWord",        new(3, "\"Variables\".\"TestWord\""), BuiltInType.UInt16,  false),
-                ("TestWordArray",   new(3, "\"Variables\".\"TestWordArray\""), BuiltInType.UInt16,  true),
+                ("TestBool",        3, BuiltInType.Boolean, false),
+                ("TestBoolArray",   4, BuiltInType.Boolean, true),
+                ("TestByte",        8, BuiltInType.Byte,    false),
+                ("TestByteArray",   9, BuiltInType.Byte,    true),
+                ("TestChar",        13, BuiltInType.Byte,    false),
+                ("TestCharArray",   14, BuiltInType.Byte,    true),
+                ("TestDInt",        18, BuiltInType.Int32,   false),
+                ("TestDIntArray",   19, BuiltInType.Int32,   true),
+                ("TestDTL",         25, BuiltInType.ExtensionObject, false),
+                ("TestDTLArray",    34, BuiltInType.ExtensionObject, true),
+                ("TestDWord",       62, BuiltInType.UInt32,  false),
+                ("TestDWordArray",  63, BuiltInType.UInt32,  true),
+                ("TestDate",        67, BuiltInType.UInt16,  false),
+                ("TestDateArray",   68, BuiltInType.UInt16,  true),
+                ("TestInt",         72, BuiltInType.Int16,   false),
+                ("TestIntArray",    73, BuiltInType.Int16,   true),
+                ("TestLReal",       77, BuiltInType.Double,  false),
+                ("TestLRealArray",  78, BuiltInType.Double,  true),
+                ("TestReal",        82, BuiltInType.Float,   false),
+                ("TestRealArray",   83, BuiltInType.Float,   true),
+                ("TestSInt",        87, BuiltInType.SByte,   false),
+                ("TestSIntArray",   88, BuiltInType.SByte,   true),
+                ("TestString",      92, BuiltInType.String,  false),
+                ("TestStringArray", 93, BuiltInType.String,  true),
+                ("TestStruct",      99, BuiltInType.ExtensionObject, false),
+                ("TestStructArray", 105, BuiltInType.ExtensionObject, true),
+                ("TestTime",        118, BuiltInType.Int32,   false),
+                ("TestTimeArray",   119, BuiltInType.Int32,   true),
+                ("TestTimeOfDay",   123, BuiltInType.UInt32,  false),
+                ("TestTimeOfDayArray", 124, BuiltInType.UInt32, true),
+                ("TestUDInt",       128, BuiltInType.UInt32,  false),
+                ("TestUDIntArray",  129, BuiltInType.UInt32,  true),
+                ("TestUInt",        133, BuiltInType.UInt16,  false),
+                ("TestUIntArray",   134, BuiltInType.UInt16,  true),
+                ("TestUSInt",       138, BuiltInType.Byte,    false),
+                ("TestUSIntArray",  139, BuiltInType.Byte,    true),
+                ("TestWChar",       143, BuiltInType.UInt16,  false),
+                ("TestWCharArray",  144, BuiltInType.UInt16,  true),
+                ("TestWString",     148, BuiltInType.String,  false),
+                ("TestWStringArray",149, BuiltInType.String,  true),
+                ("TestWord",        153, BuiltInType.UInt16,  false),
+                ("TestWordArray",   154, BuiltInType.UInt16,  true),
             };
 
             var nodesToRead = new NodeId[testConfigs.Length];
             for (int i = 0; i < testConfigs.Length; i++)
             {
-                nodesToRead[i] = testConfigs[i].NodeId;
+                nodesToRead[i] = new NodeId(4, testConfigs[i].NodeId);
             }
 
             await using var client = new UaTcpClientChannel(TestServerUrl);
@@ -337,7 +418,7 @@ namespace LiteUa.Tests.IntegrationTests
         [Fact]
         public async Task Read_And_Decode_Custom_S7DTL()
         {
-            NodeId dtlNodeId = new(3, "\"Variables\".\"TestDtl\"");
+            NodeId dtlNodeId = new(4, 25);
             await using var client = new UaTcpClientChannel(TestServerUrl);
             await client.ConnectAsync();
             await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "TypeTest");
@@ -370,8 +451,8 @@ namespace LiteUa.Tests.IntegrationTests
         [Fact]
         public async Task Write_S7DTL()
         {
-            NodeId variableNodeId = new(3, "\"Variables\".\"TestDtl\"");
-            NodeId typeEncodingId = new(3, "TE_DTL");
+            NodeId variableNodeId = new(4, 25);
+            NodeId typeEncodingId = new(4, 24);
 
             // 1. Register
             CustomUaTypeRegistry.Register<S7Dtl>(typeEncodingId, S7Dtl.Decode, (val, w) => val.Encode(w));
@@ -432,7 +513,7 @@ namespace LiteUa.Tests.IntegrationTests
         [Fact]
         public async Task Write_And_Read_Back_Int16()
         {
-            var nodeId = new NodeId(3, "\"Variables\".\"TestInt\"");
+            var nodeId = new NodeId(4, 72);
             short newValue = 1234;
 
             await using var client = new UaTcpClientChannel(TestServerUrl);
@@ -480,7 +561,7 @@ namespace LiteUa.Tests.IntegrationTests
         [Fact]
         public async Task Write_Custom_Struct_Array()
         {
-            NodeId variableNodeId = new(3, "\"Variables\".\"TestStructArray\"");
+            NodeId variableNodeId = new(4, 105);
 
             var myStructs = new TestStruct[3];
             myStructs[0] = new TestStruct { TestStructBool = true, TestStructInt = 10, TestStructString = "Elem 1" };
@@ -584,7 +665,7 @@ namespace LiteUa.Tests.IntegrationTests
             var tcsUpdate = new TaskCompletionSource<short>();
 
             // NodeId (TestInt)
-            var targetNode = new NodeId(3, "\"Variables\".\"TestInt\"");
+            var targetNode = new NodeId(4, 72);
 
             sub.DataChanged += (handle, val) =>
             {
@@ -652,15 +733,15 @@ namespace LiteUa.Tests.IntegrationTests
             await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
 
             // object and method NodeIds
-            var objectId = new NodeId(3, "\"ADD_Method_DB\"");
-            var methodId = new NodeId(3, "\"ADD_Method_DB\".Method");
+            var objectId = new NodeId(4, 158);
+            var methodId = new NodeId(4, 159);
 
             // --- Input Wrapping ---
 
             var arg1 = new Variant((short)7, BuiltInType.Int16);
             var arg2 = new Variant((short)5, BuiltInType.Int16);
 
-            // Call mit params Array
+            // Call
             var outputs = await client.CallAsync(objectId, methodId, default, arg1, arg2);
 
             Assert.NotNull(outputs);
@@ -684,109 +765,155 @@ namespace LiteUa.Tests.IntegrationTests
 
             // Typed call
             var result = await client.CallTypedAsync<AddInput, AddOutput>(
-                new NodeId(3, "\"ADD_Method_DB\""),
-                new NodeId(3, "\"ADD_Method_DB\".Method"),
+                new NodeId(4, 158),
+                new NodeId(4, 159),
                 input);
 
             Assert.Equal(30, result.Result);
         }
 
         [Fact]
-        public async Task Call_Method_With_Nested_Struct_Array()
+        public async Task Browse_With_Paging()
         {
-            var objectId = new NodeId(3, "\"COMPLEX_Method_DB\"");
-            var methodId = new NodeId(3, "\"COMPLEX_Method_DB\".Method");
-
             await using var client = new UaTcpClientChannel(TestServerUrl);
             await client.ConnectAsync();
-            await client.CreateSessionAsync("urn:s7nexus:client", "urn:s7nexus", "MethodSession");
+            await client.CreateSessionAsync("urn:test", "urn:test", "BrowseNext");
             await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
 
-            var inputData = new ComplexInput
+            var refs = await client.BrowseAsync([new NodeId(0, 2253)], maxRefs: 2);
+
+            Assert.NotNull(refs);
+            Assert.NotEmpty(refs);
+            Assert.Single(refs);
+            Assert.NotEmpty(refs[0]);
+            Assert.True(refs[0].Length > 2);
+        }
+
+        [Fact]
+        public async Task Modify_And_Toggle_Subscription()
+        {
+            await using var client = new UaTcpClientChannel(TestServerUrl);
+            await client.ConnectAsync();
+            await client.CreateSessionAsync("urn:test", "urn:test", "LifecycleTest");
+            await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+
+            // 1. Create Subscription
+            var createSubReq = new CreateSubscriptionRequest
             {
-                InputObjects = new DT_Object[3]
+                RequestHeader = client.CreateRequestHeader(),
+                RequestedPublishingInterval = 500.0,
+                PublishingEnabled = true
             };
+            var subRes = await client.SendRequestAsync<CreateSubscriptionRequest, CreateSubscriptionResponse>(createSubReq);
+            uint subId = subRes.SubscriptionId;
+            Assert.NotEqual((uint)0, subId);
 
-            inputData.InputObjects[0] = new DT_Object("Test", new DT_Pos { X = 10, Y = 20, Z = 30 });
-            inputData.InputObjects[1] = new DT_Object("Elem 2", new DT_Pos { X = 11, Y = 21, Z = 31 });
-            inputData.InputObjects[2] = new DT_Object("Z Object", new DT_Pos { X = 12, Y = 22, Z = 32 });
+            // 2. Create Monitored Item
+            var createMonReq = new CreateMonitoredItemsRequest
+            {
+                RequestHeader = client.CreateRequestHeader(),
+                SubscriptionId = subId,
+                ItemsToCreate =
+                [
+                        new MonitoredItemCreateRequest(
 
-            var result = await client.CallTypedAsync<ComplexInput, ComplexOutput>(
-                objectId,
-                methodId,
-                inputData);
+                            new ReadValueId(new NodeId(4, 3)), // TestBool
+                            2,
+                            new MonitoringParameters() { ClientHandle = 1, SamplingInterval = 100, QueueSize = 1 }
+                        )
+                    ]
+            };
+            var monRes = await client.SendRequestAsync<CreateMonitoredItemsRequest, CreateMonitoredItemsResponse>(createMonReq);
+            uint monId = monRes.Results?[0].MonitoredItemId ?? 0;
+            Assert.NotEqual((uint)0, monId);
 
-            Assert.NotNull(result);
-            Assert.NotNull(result.OutputObjects);
-            Assert.Equal(3, result.OutputObjects.Length);
+            // 3. Modify Monitored Item
+            var modResults = await client.ModifyMonitoredItemsAsync(
+                subId,
+                [monId],
+                [(uint)1], // keep handle
+                2000.0, // New interval
+                5,      // New queue
+                default
+            );
+            Assert.True(modResults?[0].StatusCode.IsGood);
 
-            var out1 = result.OutputObjects[0];
-            var out3 = result.OutputObjects[2];
+            var setMonResults = await client.SetMonitoringModeAsync(
+                subId,
+                [monId],
+                0, // Disabled
+                default
+            );
+            Assert.True(setMonResults?[0].IsGood);
 
-            Assert.Equal("Test", out1.Name);
-            Assert.Equal(10, out1.Position.X);
-            Assert.Equal("Z Object", out3.Name);
-            Assert.Equal(12, out3.Position.X);
+            // 5. Set Publishing Mode (Helper)
+            var setPubResults = await client.SetPublishingModeAsync(
+                [subId],
+                false, // Disabled
+                default
+            );
+            Assert.True(setPubResults?[0].IsGood);
+
+            // Cleanup
+            var delReq = new DeleteSubscriptionsRequest
+            {
+                RequestHeader = client.CreateRequestHeader(),
+                SubscriptionIds = [subId]
+            };
+            await client.SendRequestAsync<DeleteSubscriptionsRequest, DeleteSubscriptionsResponse>(delReq);
+        }
+
+        [Fact]
+        public async Task Browse_Multiple_Nodes_At_Once()
+        {
+            await using var client = new UaTcpClientChannel(TestServerUrl);
+            await client.ConnectAsync();
+            await client.CreateSessionAsync("urn:test", "urn:test", "BrowseBulk");
+            await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+
+            var nodes = new[]
+            {
+                    new NodeId(0, 84), // Root
+                    new NodeId(0, 85)  // Objects
+                };
+
+            var results = await client.BrowseAsync(nodes, 2);
+
+            Assert.Equal(2, results.Length);
+
+            Assert.Contains(results[0], r => r.BrowseName?.Name == "Objects");
+            Assert.Contains(results[0], r => r.BrowseName?.Name == "Types");
+            Assert.Contains(results[0], r => r.BrowseName?.Name == "Views");
+
+            Assert.Contains(results[1], r => r.BrowseName?.Name == "Server");
+            Assert.Contains(results[1], r => r.BrowseName?.Name == "DeviceSet");
+            Assert.Contains(results[1], r => r.BrowseName?.Name == "PLC_1");
+        }
+
+        [Fact]
+        public async Task Translate_Path_To_NodeId()
+        {
+            await using var client = new UaTcpClientChannel(TestServerUrl);
+            await client.ConnectAsync();
+            await client.CreateSessionAsync("urn:test", "urn:test", "Translate");
+            await client.ActivateSessionAsync(new AnonymousIdentity("Anonymous"));
+
+            // Start: Objects (i=85)
+            // path to ServerStatus: "0:Server/0:ServerStatus"
+
+            var startNode = new NodeId(0, 85);
+            var paths = new[] { "0:Server/0:ServerStatus" };
+
+            var nodeIds = await client.ResolveNodeIdsAsync(startNode, paths);
+
+            Assert.Single(nodeIds);
+            Assert.NotNull(nodeIds[0]);
+
+            // should be NodeId i=2256 (ServerStatus)
+            Assert.Equal((uint)2256, nodeIds[0]?.NumericIdentifier);
         }
 
         #region Helper classes
-
-        class DT_Pos
-        {
-            public short X { get; set; }
-            public short Y { get; set; }
-            public short Z { get; set; }
-
-            public static DT_Pos Decode(OpcUaBinaryReader reader)
-            {
-                var pos = new DT_Pos
-                {
-                    X = reader.ReadInt16(),
-                    Y = reader.ReadInt16(),
-                    Z = reader.ReadInt16()
-                };
-
-                return pos;
-            }
-
-            public void Encode(OpcUaBinaryWriter writer)
-            {
-                writer.WriteInt16(X);
-                writer.WriteInt16(Y);
-                writer.WriteInt16(Z);
-            }
-        }
-
-        class DT_Object(string name, UaTcpClientChannelIntegrationTests_S7_1500.DT_Pos position)
-        {
-            public string Name { get; set; } = name;
-            public DT_Pos Position { get; set; } = position;
-
-            public static DT_Object Decode(OpcUaBinaryReader reader)
-            {
-                var ob = new DT_Object(reader.ReadString() ?? string.Empty, DT_Pos.Decode(reader));
-                return ob;
-            }
-
-            public void Encode(OpcUaBinaryWriter writer)
-            {
-                writer.WriteString(Name);
-                Position.Encode(writer);
-            }
-        }
-
-        private class ComplexInput
-        {
-            [OpcMethodParameter(0, BuiltInType.ExtensionObject)]
-            public DT_Object[]? InputObjects { get; set; }
-        }
-
-        class ComplexOutput
-        {
-            [OpcMethodParameter(0, BuiltInType.ExtensionObject)]
-            public DT_Object[]? OutputObjects { get; set; }
-        }
-
         private class AddInput
         {
             [OpcMethodParameter(0, BuiltInType.Int16)]
@@ -876,33 +1003,7 @@ namespace LiteUa.Tests.IntegrationTests
 
             public override string ToString() => $"TestStructBool:{TestStructBool} - TestStructInt:{TestStructInt} - TestStructString:{TestStructString}";
         }
-
-        private class TestStructArray
-        {
-            public TestStruct[] Members { get; set; } = new TestStruct[3];
-
-            public static TestStructArray Decode(OpcUaBinaryReader reader)
-            {
-                var length = reader.ReadInt32();
-                var members = new TestStruct[length];
-                for (int i = 0; i < length; i++)
-                {
-                    members[i] = TestStruct.Decode(reader);
-                }
-
-                return new TestStructArray() { Members = members };
-            }
-
-            public void Encode(OpcUaBinaryWriter writer)
-            {
-                writer.WriteInt32(Members.Length);
-                for(int i = 0; i < Members.Length; i++)
-                {
-                    Members[i].Encode(writer);
-                }
-            }
-        }
         #endregion
+        */
     }
-    */
 }

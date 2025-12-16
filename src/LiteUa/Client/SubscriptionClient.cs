@@ -15,21 +15,19 @@ using System.Threading.Tasks;
 
 namespace LiteUa.Client
 {
-    public class SubscriptionClient(
-        string endpointUrl,
-        IUserIdentity? userIdentity = null,
-        ISecurityPolicy? policy = null,
-        X509Certificate2? clientCert = null,
-        X509Certificate2? serverCert = null,
-        MessageSecurityMode mode = MessageSecurityMode.None) : IDisposable, IAsyncDisposable
+    public class SubscriptionClient : IDisposable, IAsyncDisposable
     {
+
         // Configuration
-        private readonly string _endpointUrl = endpointUrl;
-        private readonly IUserIdentity _userIdentity = userIdentity ?? new AnonymousIdentity("Anonymous");
-        private readonly ISecurityPolicy _policy = policy ?? new SecurityPolicyNone();
-        private readonly X509Certificate2? _clientCert = clientCert;
-        private readonly X509Certificate2? _serverCert = serverCert;
-        private readonly MessageSecurityMode _securityMode = mode;
+        private readonly string _endpointUrl;
+        private readonly string _applicationUri;
+        private readonly string _productUri;
+        private readonly string _applicationName;
+        private readonly IUserIdentity _userIdentity;
+        private readonly ISecurityPolicy _policy;
+        private readonly X509Certificate2? _clientCert;
+        private readonly X509Certificate2? _serverCert;
+        private readonly MessageSecurityMode _securityMode;
 
         // Runtime State
         private UaTcpClientChannel? _channel;
@@ -51,6 +49,35 @@ namespace LiteUa.Client
         // Events
         public event Action<uint, DataValue>? DataChanged;
         public event Action<bool>? ConnectionStatusChanged;
+
+        public SubscriptionClient(
+            string endpointUrl,
+            string applicationUri,
+            string productUri,
+            string applicationName,
+            IUserIdentity userIdentity,
+            ISecurityPolicy policy,
+            MessageSecurityMode mode,
+            X509Certificate2? clientCert,
+            X509Certificate2? serverCert)
+        {
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(endpointUrl);
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationUri);
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(productUri);
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationName);
+            ArgumentNullException.ThrowIfNull(userIdentity);
+            ArgumentNullException.ThrowIfNull(policy);
+
+            _endpointUrl = endpointUrl;
+            _applicationUri = applicationUri;
+            _productUri = productUri;
+            _applicationName = applicationName;
+            _userIdentity = userIdentity;
+            _policy = policy;
+            _securityMode = mode;
+            _clientCert = clientCert;
+            _serverCert = serverCert;
+        }
 
         public void Start()
         {
@@ -141,9 +168,9 @@ namespace LiteUa.Client
             foreach (var bucket in _buckets.Values) bucket.ClearLiveReference();
 
             // create new channel
-            _channel = new UaTcpClientChannel(_endpointUrl, _policy, _clientCert, _serverCert, _securityMode);
+            _channel = new UaTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _policy, _securityMode, _clientCert, _serverCert);
             await _channel.ConnectAsync();
-            await _channel.CreateSessionAsync("urn:s7nexus:resilient", "urn:s7nexus", "Monitor");
+            await _channel.CreateSessionAsync("MonitoringSession");
             await _channel.ActivateSessionAsync(_userIdentity);
 
             // 3. Restore

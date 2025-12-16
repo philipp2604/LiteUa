@@ -11,7 +11,7 @@ namespace LiteUa.Security.Policies
     /// </summary>
     public class SecurityPolicyNone : ISecurityPolicy
     {
-        public string SecurityPolicyUri => "http://opcfoundation.org/UA/SecurityPolicy#None";
+        public string SecurityPolicyUri => SecurityPolicyUris.None;
 
         public int AsymmetricSignatureSize => 0;
         public int AsymmetricEncryptionBlockSize => 1;
