@@ -1,5 +1,6 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Client;
+using LiteUa.Client.Pooling;
 using LiteUa.Encoding;
 using LiteUa.Security;
 using LiteUa.Security.Policies;
@@ -127,6 +128,8 @@ namespace LiteUa.Tests.IntegrationTests
             // 5. Send payload (Symmetric Encrypt/Sign)
             // ------------------------------------------------------------
             var response = await secureClient.GetEndpointsAsync();
+
+            var res = secureClient.ReadAsync([new(4, 159)]);
 
             Assert.NotNull(response);
             Assert.NotNull(response.Endpoints);
