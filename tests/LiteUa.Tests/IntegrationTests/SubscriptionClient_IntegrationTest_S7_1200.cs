@@ -10,7 +10,6 @@ using Xunit.Abstractions;
 
 namespace LiteUa.Tests.IntegrationTests
 {
-    /*
     [Category("IntegrationTests_S7-1200")]
     public class SubscriptionClient_IntegrationTest_S7_1200(ITestOutputHelper output)
     {
@@ -105,5 +104,4 @@ namespace LiteUa.Tests.IntegrationTests
         }
 
     }
-    */
 }

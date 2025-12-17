@@ -20,7 +20,6 @@ using Xunit.Abstractions;
 
 namespace LiteUa.Tests.IntegrationTests
 {
-    /*
     [Category("IntegrationTests_S7-1200")]
     public class UaTcpClientChannelIntegrationTests_S7_1200
     {
@@ -200,7 +199,7 @@ namespace LiteUa.Tests.IntegrationTests
                 var endpoints = await discovery.GetEndpointsAsync();
 
                 targetEndpoint = endpoints.Endpoints?.FirstOrDefault(e =>
-                    e.SecurityPolicyUri == "http://opcfoundation.org/UA/SecurityPolicy#None");
+                    e.SecurityPolicyUri == "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
 
                 Assert.NotNull(targetEndpoint);
                 userTokenPolicy = targetEndpoint.UserIdentityTokens?.FirstOrDefault(t =>
@@ -208,12 +207,12 @@ namespace LiteUa.Tests.IntegrationTests
                     t.SecurityPolicyUri == "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256"
                 );
 
-                if (userTokenPolicy == null || userTokenPolicy.PolicyId == null) throw new Exception("Server does not offer Encrypted Password Login on None Channel");
+                if (userTokenPolicy == null || userTokenPolicy.PolicyId == null) throw new Exception("Server does not offer Encrypted Password Login on Basic256Sha256 Channel");
             }
 
             // 2. Certificates
             if (targetEndpoint.ServerCertificate == null || targetEndpoint.ServerCertificate.Length == 0)
-                throw new Exception("Server Endpoint 'None' did not return a Certificate (required for Password Encryption)");
+                throw new Exception("Server Endpoint 'Basic256Sha256' did not return a Certificate (required for Password Encryption)");
 
             var serverCert = X509CertificateLoader.LoadCertificate(targetEndpoint.ServerCertificate!);
             var clientCert = CertificateFactory.CreateSelfSignedCertificate("S7NexusClient", "urn:localhost:S7NexusClient");
@@ -232,7 +231,7 @@ namespace LiteUa.Tests.IntegrationTests
             await client.CreateSessionAsync("urn:localhost:S7NexusClient", "urn:S7Nexus:Lib", "MixedSession");
 
             // 4. Login
-            var identity = new UserNameIdentity(userTokenPolicy.PolicyId, "username", "password");
+            var identity = new UserNameIdentity(userTokenPolicy.PolicyId, "user", "Password1");
             await client.ActivateSessionAsync(identity);
 
             // Verify: Send a Request
@@ -241,6 +240,11 @@ namespace LiteUa.Tests.IntegrationTests
             Assert.NotNull(response);
             Assert.NotNull(response.Endpoints);
             Assert.NotEmpty(response.Endpoints);
+
+            var readResult = await client.ReadAsync([new(4, 3)]);
+            Assert.NotNull(readResult);
+            Assert.NotEmpty(readResult);
+            Assert.True(readResult[0].StatusCode.IsGood);
         }
 
         [Fact]
@@ -927,5 +931,4 @@ namespace LiteUa.Tests.IntegrationTests
         }
         #endregion
     }
-    */
 }

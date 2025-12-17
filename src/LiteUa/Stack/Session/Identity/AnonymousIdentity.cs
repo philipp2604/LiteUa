@@ -13,7 +13,7 @@ namespace LiteUa.Stack.Session.Identity
     /// TODO: fix documentation comments
     /// TODO: Add ToString() method
 
-    public class AnonymousIdentity(string policyId = "Anonymous") : IUserIdentity
+    public class AnonymousIdentity(string policyId) : IUserIdentity
     {
         public string PolicyId { get; set; } = policyId;
 

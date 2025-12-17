@@ -18,7 +18,6 @@ using Xunit.Abstractions;
 
 namespace LiteUa.Tests.IntegrationTests
 {
-    /*
     [Category("IntegrationTests_S7-1500")]
     public class UaTcpClientChannelIntegrationTests_S7_1500
     {
@@ -904,5 +903,4 @@ namespace LiteUa.Tests.IntegrationTests
         }
         #endregion
     }
-    */
 }

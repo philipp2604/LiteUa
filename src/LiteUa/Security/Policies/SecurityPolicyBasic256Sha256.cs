@@ -12,7 +12,7 @@ namespace LiteUa.Security.Policies
 {
     public class SecurityPolicyBasic256Sha256 : ISecurityPolicy
     {
-        public string SecurityPolicyUri => SecurityPolicyUris.Basic256Sha256;
+        public string SecurityPolicyUri => "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256";
 
         private readonly X509Certificate2 _localCertificate; // Private Key for signing/decrypting
         private readonly X509Certificate2 _remoteCertificate; // Public Key for encrypting/verifying
