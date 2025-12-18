@@ -41,7 +41,8 @@ namespace LiteUa.BuiltIn
             // Bit 3: ServerTimestamp present
             // ... (PicoSeconds etc. )
 
-            ///TODO: PicoSeconds (Bits 4 and 5)
+            // PicoSeconds (Bits 4 and 5) not supported as DateTime does not support them
+            //TODO: Extra properties for picoseconds?
 
             byte mask = reader.ReadByte();
 
