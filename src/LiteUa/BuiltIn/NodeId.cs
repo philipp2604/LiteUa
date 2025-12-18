@@ -1,9 +1,4 @@
 ﻿using LiteUa.Encoding;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.BuiltIn
 {
@@ -27,11 +22,20 @@ namespace LiteUa.BuiltIn
             NamespaceUriFlag = 0x80
         }
 
-        public NodeId(uint id) { NamespaceIndex = 0; NumericIdentifier = id; }
-        public NodeId(ushort ns, uint id) { NamespaceIndex = ns; NumericIdentifier = id; }
-        public NodeId(ushort ns, string id) { NamespaceIndex = ns; StringIdentifier = id; }
-        public NodeId(ushort ns, Guid id) { NamespaceIndex = ns; GuidIdentifier = id; }
-        public NodeId(ushort ns, byte[] id) { NamespaceIndex = ns; ByteStringIdentifier = id; }
+        public NodeId(uint id)
+        { NamespaceIndex = 0; NumericIdentifier = id; }
+
+        public NodeId(ushort ns, uint id)
+        { NamespaceIndex = ns; NumericIdentifier = id; }
+
+        public NodeId(ushort ns, string id)
+        { NamespaceIndex = ns; StringIdentifier = id; }
+
+        public NodeId(ushort ns, Guid id)
+        { NamespaceIndex = ns; GuidIdentifier = id; }
+
+        public NodeId(ushort ns, byte[] id)
+        { NamespaceIndex = ns; ByteStringIdentifier = id; }
 
         public ushort NamespaceIndex { get; private set; }
         public uint? NumericIdentifier { get; private set; }

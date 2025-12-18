@@ -1,9 +1,4 @@
 ﻿using LiteUa.Encoding;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.BuiltIn
 {
@@ -48,7 +43,7 @@ namespace LiteUa.BuiltIn
                 // check if encoder is registered
                 if (CustomUaTypeRegistry.TryGetEncoder(DecodedValue.GetType(), out var encoder, out var encodingId))
                 {
-                    if(encodingId == null)
+                    if (encodingId == null)
                         throw new InvalidOperationException($"No encoding Id found for the given type: {DecodedValue.GetType()}");
                     if (encoder == null)
                         throw new InvalidOperationException($"No encoder found for the given type: {DecodedValue.GetType()}");

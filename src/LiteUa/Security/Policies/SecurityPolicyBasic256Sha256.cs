@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
 
 /// TODO: Add unit tests
 
@@ -19,10 +14,12 @@ namespace LiteUa.Security.Policies
 
         // Asymmetric algorithms
         private readonly RSA _localRsa;
+
         private readonly RSA _remoteRsa;
 
         // Symmetric keys
         private ChannelTokenKeys? _sendingKeys;
+
         private ChannelTokenKeys? _receivingKeys;
 
         public SecurityPolicyBasic256Sha256(X509Certificate2 localCertificate, X509Certificate2 remoteCertificate)
@@ -41,6 +38,7 @@ namespace LiteUa.Security.Policies
         // Basic256Sha256 needs RSA 2048 Min.
         // KeySize (bits) / 8 = Bytes. 2048 / 8 = 256 Bytes.
         public int AsymmetricSignatureSize => _localRsa.KeySize / 8;
+
         public int AsymmetricCipherTextBlockSize => _remoteRsa.KeySize / 8;
 
         // Plaintext Block Size for RSA OAEP SHA1: KeySize - 41 (Overhead) - 1
@@ -49,6 +47,7 @@ namespace LiteUa.Security.Policies
 
         // --- Symmetric Config ---
         public int SymmetricSignatureSize => 32; // HMAC-SHA256 = 256 bit = 32 byte
+
         public int SymmetricBlockSize => 16;     // AES Block = 128 bit = 16 byte
         public int SymmetricKeySize => 32;       // AES-256 = 32 byte Key
         public int SymmetricInitializationVectorSize => 16; // AES IV

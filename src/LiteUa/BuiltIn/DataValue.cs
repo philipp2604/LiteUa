@@ -1,16 +1,10 @@
 ﻿using LiteUa.Encoding;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.BuiltIn
 {
-
     /// TODO: Add unit tests
     /// TODI: Add ToString() method
-    
+
     /// <summary>
     /// Represents a DataValue in OPC UA, which includes a value, status code, and timestamps.
     /// </summary>
@@ -50,7 +44,7 @@ namespace LiteUa.BuiltIn
             ///TODO: PicoSeconds (Bits 4 and 5)
 
             byte mask = reader.ReadByte();
-            
+
             if ((mask & 0x01) != 0) dv.Value = Variant.Decode(reader);
             if ((mask & 0x02) != 0) dv.StatusCode = StatusCode.Decode(reader);
             if ((mask & 0x04) != 0) dv.SourceTimestamp = reader.ReadDateTime();

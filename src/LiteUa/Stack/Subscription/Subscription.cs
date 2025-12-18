@@ -3,11 +3,6 @@ using LiteUa.Encoding;
 using LiteUa.Stack.Attribute;
 using LiteUa.Stack.Subscription.MonitoredItem;
 using LiteUa.Transport;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.Stack.Subscription
 {
@@ -24,6 +19,7 @@ namespace LiteUa.Stack.Subscription
         private readonly Lock _ackLock = new();
 
         public event Action<uint, DataValue>? DataChanged;
+
         public event Action<Exception>? ConnectionLost;
 
         public async Task<uint[]> CreateMonitoredItemsAsync(NodeId[] nodeIds, uint[] clientHandles)
@@ -34,7 +30,7 @@ namespace LiteUa.Stack.Subscription
             for (int i = 0; i < nodeIds.Length; i++)
             {
                 items[i] = new MonitoredItemCreateRequest(
-                    new ReadValueId(nodeIds[i]), 
+                    new ReadValueId(nodeIds[i]),
                     2, // Reporting
                     new MonitoringParameters()
                     {
@@ -55,9 +51,8 @@ namespace LiteUa.Stack.Subscription
 
             var res = await _channel.SendRequestAsync<CreateMonitoredItemsRequest, CreateMonitoredItemsResponse>(req);
 
-            if(res.Results != null)
+            if (res.Results != null)
             {
-
             }
 
             var results = new uint[res.Results?.Length ?? 0];
@@ -205,7 +200,7 @@ namespace LiteUa.Stack.Subscription
                                 // StatusChangeNotification 820
                                 else if (extObj.TypeId.NumericIdentifier == 820 && extObj.Encoding == 0x01)
                                 {
-                                    if(extObj.Body != null)
+                                    if (extObj.Body != null)
                                     {
                                         using var ms = new System.IO.MemoryStream(extObj.Body);
                                         var r = new OpcUaBinaryReader(ms);

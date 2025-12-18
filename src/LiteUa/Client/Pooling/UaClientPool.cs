@@ -2,13 +2,8 @@
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
 using LiteUa.Transport;
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.Client.Pooling
 {
@@ -18,15 +13,16 @@ namespace LiteUa.Client.Pooling
         private readonly string _applicationUri;
         private readonly string _productUri;
         private readonly string _applicationName;
-        private readonly ISecurityPolicy _securityPolicy;
         private readonly IUserIdentity _userIdentity;
-        private readonly MessageSecurityMode _messageSecurityMode;
-        private readonly X509Certificate2? _clientCertificate;
-        private readonly X509Certificate2? _serverCertificate;
+        private readonly ISecurityPolicyFactory _securityPolicyFactory;
+        private readonly X509Certificate2? _clientCert;
+        private readonly X509Certificate2? _serverCert;
+        private readonly MessageSecurityMode _securityMode;
         private readonly int _maxSize;
 
         // Idle clients
-        private readonly ConcurrentBag<UaTcpClientChannel> _clients = [];
+        private readonly ConcurrentBag<UaTcpClientChannel> _clients;
+
         private readonly SemaphoreSlim _semaphore;
 
         public UaClientPool(
@@ -34,30 +30,31 @@ namespace LiteUa.Client.Pooling
             string applicationUri,
             string productUri,
             string applicationName,
-            ISecurityPolicy securityPolicy,
             IUserIdentity userIdentity,
+            ISecurityPolicyFactory securityPolicyFactory,
             MessageSecurityMode securityMode,
-            X509Certificate2? clientCertificate,
-            X509Certificate2? serverCertificate,
-            int maxSize = 10)
+            X509Certificate2? clientCert,
+            X509Certificate2? serverCert,
+            int maxSize)
         {
             ArgumentNullException.ThrowIfNullOrWhiteSpace(endpointUrl);
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationUri);
             ArgumentNullException.ThrowIfNullOrWhiteSpace(productUri);
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationName);
-            ArgumentNullException.ThrowIfNull(securityPolicy);
             ArgumentNullException.ThrowIfNull(userIdentity);
+            ArgumentNullException.ThrowIfNull(securityPolicyFactory);
 
             _endpointUrl = endpointUrl;
             _applicationUri = applicationUri;
             _productUri = productUri;
             _applicationName = applicationName;
-            _securityPolicy = securityPolicy;
             _userIdentity = userIdentity;
-            _messageSecurityMode = securityMode;
-            _clientCertificate = clientCertificate;
-            _serverCertificate = serverCertificate;
+            _securityPolicyFactory = securityPolicyFactory;
+            _clientCert = clientCert;
+            _serverCert = serverCert;
+            _securityMode = securityMode;
             _maxSize = maxSize;
+            _clients = [];
             _semaphore = new(maxSize, maxSize);
         }
 
@@ -106,9 +103,7 @@ namespace LiteUa.Client.Pooling
         private async Task<UaTcpClientChannel> CreateNewClientAsync()
         {
             /// TODO: general connection logic via configurable Security Policies, Message Security Modes, etc.
-
-            var client = new UaTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName,
-                _securityPolicy, _messageSecurityMode, _clientCertificate, _serverCertificate);
+            var client = new UaTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert);
 
             try
             {

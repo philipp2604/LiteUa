@@ -1,14 +1,9 @@
 ﻿using LiteUa.Encoding;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.BuiltIn
 {
     /// TODO: Add unit tests
-   
+
     /// <summary>
     /// Represents a LocalizedText in OPC UA, which includes an optional Locale and Text.
     /// </summary>
@@ -62,6 +57,7 @@ namespace LiteUa.BuiltIn
         }
 
         public static implicit operator string(LocalizedText lt) => lt?.Text ?? string.Empty;
+
         public static implicit operator LocalizedText(string text) => new() { Text = text };
     }
 }

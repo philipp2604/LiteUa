@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace LiteUa.Stack.View
+﻿namespace LiteUa.Stack.View
 {
     /// TODO: Add unit tests
     /// TODO: fix documentation comments

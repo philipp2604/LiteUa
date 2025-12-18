@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace LiteUa.Security.Policies
+﻿namespace LiteUa.Security.Policies
 {
     /// <summary>
     /// A class representing the "None" security policy in OPC UA.
@@ -23,15 +17,22 @@ namespace LiteUa.Security.Policies
         public int SymmetricInitializationVectorSize => 0;
 
         public byte[] Sign(byte[] dataToSign) => [];
+
         public bool Verify(byte[] dataToVerify, byte[] signature) => true;
+
         public byte[] EncryptAsymmetric(byte[] dataToEncrypt) => dataToEncrypt;
+
         public byte[] DecryptAsymmetric(byte[] dataToDecrypt) => dataToDecrypt;
 
-        public void DeriveKeys(byte[] clientNonce, byte[] serverNonce) {}
+        public void DeriveKeys(byte[] clientNonce, byte[] serverNonce)
+        { }
 
         public byte[] SignSymmetric(byte[] dataToSign) => [];
+
         public bool VerifySymmetric(byte[] dataToVerify, byte[] signature) => true;
+
         public byte[] EncryptSymmetric(byte[] dataToEncrypt) => dataToEncrypt;
+
         public byte[] DecryptSymmetric(byte[] dataToDecrypt) => dataToDecrypt;
     }
 }

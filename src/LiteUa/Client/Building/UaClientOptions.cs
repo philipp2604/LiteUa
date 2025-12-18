@@ -1,15 +1,9 @@
 ﻿using LiteUa.Security.Policies;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace LiteUa.Client
+namespace LiteUa.Client.Building
 {
     public class UaClientOptions
     {
@@ -26,8 +20,9 @@ namespace LiteUa.Client
             public X509Certificate2? ClientCertificate { get; set; }
             public X509Certificate2? ServerCertificate { get; set; } // Optional: Pinning
             public UserTokenType UserTokenType { get; set; } = UserTokenType.Anonymous;
-            public string? Username = null;
-            public string? Password = null;
+            public SecurityPolicyType UserTokenPolicyType { get; set; } = SecurityPolicyType.None;
+            public string? Username { get; set; } = null;
+            public string? Password { get; set; } = null;
         }
 
         public class SessionOptions
@@ -40,43 +35,6 @@ namespace LiteUa.Client
         public class PoolOptions
         {
             public int MaxSize { get; set; } = 10;
-        }
-    }
-
-    public class UaClientBuilder
-    {
-        private readonly UaClientOptions _options = new();
-
-        public UaClientBuilder ForEndpoint(string url)
-        {
-            _options.EndpointUrl = url;
-            return this;
-        }
-
-        public UaClientBuilder WithSecurity(Action<UaClientOptions.SecurityOptions> configure)
-        {
-            configure(_options.Security);
-            return this;
-        }
-
-        public UaClientBuilder WithSession(Action<UaClientOptions.SessionOptions> configure)
-        {
-            configure(_options.Session);
-            return this;
-        }
-
-        public UaClientBuilder WithPool(Action<UaClientOptions.PoolOptions> configure)
-        {
-            configure(_options.Pool);
-            return this;
-        }
-
-        public UaClient Build()
-        {
-            if (string.IsNullOrEmpty(_options.EndpointUrl))
-                throw new InvalidOperationException("Endpoint URL must be set.");
-
-            return new UaClient(_options);
         }
     }
 }

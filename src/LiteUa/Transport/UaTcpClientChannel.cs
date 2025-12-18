@@ -14,16 +14,9 @@ using LiteUa.Stack.Subscription.MonitoredItem;
 using LiteUa.Stack.View;
 using LiteUa.Transport.Headers;
 using LiteUa.Transport.TcpMessages;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net.Sockets;
 using System.Security.Cryptography;
-using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace LiteUa.Transport
 {
@@ -44,6 +37,7 @@ namespace LiteUa.Transport
 
         // --- Connection State ---
         private uint _sequenceNumber = 1;
+
         private int _requestId = 1;
         public uint SecureChannelId = 0; // 0 while disconnected
         private NodeId _authenticationToken = new(0); // Session Token
@@ -51,10 +45,12 @@ namespace LiteUa.Transport
 
         // --- Renewal Management ---
         private CancellationTokenSource? _renewCts;
+
         private Task? _renewTask;
 
         // --- Configuration / Security ---
         private readonly ISecurityPolicy _securityPolicy;
+
         private readonly X509Certificate2? _clientCertificate;
         private X509Certificate2? _serverCertificate;
         private byte[]? _clientNonce;
@@ -66,6 +62,7 @@ namespace LiteUa.Transport
 
         // --- Negotiated Parameters ---
         public uint SendBufferSize { get; private set; }
+
         public uint ReceiveBufferSize { get; private set; }
         public uint MaxMessageSize { get; private set; }
         public uint MaxChunkCount { get; private set; }
@@ -75,7 +72,7 @@ namespace LiteUa.Transport
             string applicationUri,
             string productUri,
             string applicationName,
-            ISecurityPolicy securityPolicy,
+            ISecurityPolicyFactory policyFactory,
             MessageSecurityMode securityMode,
             X509Certificate2? clientCertificate,
             X509Certificate2? serverCertificate)
@@ -84,23 +81,21 @@ namespace LiteUa.Transport
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationUri);
             ArgumentNullException.ThrowIfNullOrWhiteSpace(productUri);
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationName);
+            ArgumentNullException.ThrowIfNull(policyFactory);
 
             _endpointUrl = endpointUrl;
             _applicationUri = applicationUri;
             _productUri = productUri;
             _applicationName = applicationName;
-            _securityPolicy = securityPolicy;
+            _securityPolicy = policyFactory.CreateSecurityPolicy(clientCertificate, serverCertificate);
+            _securityMode = securityMode;
             _clientCertificate = clientCertificate;
             _serverCertificate = serverCertificate;
 
             // Generate nonce (min 32 bytes for 256bit security)
             _clientNonce = new byte[32];
-            using (var rng = RandomNumberGenerator.Create())
-            {
-                rng.GetBytes(_clientNonce);
-            }
-
-            _securityMode = securityMode;
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(_clientNonce);
         }
 
         public async Task<NodeId?[]> ResolveNodeIdsAsync(NodeId startNode, string[] paths, CancellationToken token = default)
@@ -150,7 +145,7 @@ namespace LiteUa.Transport
             var itemsToModify = new MonitoredItemModifyRequest[monitoredItemIds.Length];
             for (int i = 0; i < monitoredItemIds.Length; i++)
             {
-                itemsToModify[i] = new MonitoredItemModifyRequest(monitoredItemIds[i], 
+                itemsToModify[i] = new MonitoredItemModifyRequest(monitoredItemIds[i],
                     new MonitoringParameters()
                     {
                         ClientHandle = clientHandles[i],
@@ -302,16 +297,19 @@ namespace LiteUa.Transport
             {
                 try
                 {
-                    var req = new CloseSessionRequest
+                    if (_stream != null)
                     {
-                        RequestHeader = CreateRequestHeader(),
-                        DeleteSubscriptions = true
-                    };
-                    await SendRequestAsync<CloseSessionRequest, CloseSessionResponse>(req);
+                        var req = new CloseSessionRequest
+                        {
+                            RequestHeader = CreateRequestHeader(),
+                            DeleteSubscriptions = true
+                        };
+                        await SendRequestAsync<CloseSessionRequest, CloseSessionResponse>(req);
+                    }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    Console.WriteLine($"Warning: CloseSession failed: {ex.Message}");
+                    throw;
                 }
             }
 
@@ -326,9 +324,8 @@ namespace LiteUa.Transport
                     };
                     await SendRequestAsync<CloseSecureChannelRequest, CloseSecureChannelResponse>(req);
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    Console.WriteLine($"Info: CloseSecureChannel response exception (expected): {ex.Message}");
                 }
             }
 
@@ -400,10 +397,10 @@ namespace LiteUa.Transport
 
             var response = await SendRequestAsync<CreateSessionRequest, CreateSessionResponse>(req, cancellationToken);
 
-            _authenticationToken = response.AuthenticationToken ?? new NodeId(0,0);
+            _authenticationToken = response.AuthenticationToken ?? new NodeId(0, 0);
             _sessionServerNonce = response.ServerNonce;
 
-            if(response.ServerCertificate != null && response.ServerCertificate.Length > 0)
+            if (response.ServerCertificate != null && response.ServerCertificate.Length > 0)
             {
                 _serverCertificate = X509CertificateLoader.LoadCertificate(response.ServerCertificate);
             }
@@ -547,7 +544,7 @@ namespace LiteUa.Transport
             try
             {
                 _clientNonce = new byte[32];
-                using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+                using (var rng = RandomNumberGenerator.Create())
                     rng.GetBytes(_clientNonce);
 
                 var request = new OpenSecureChannelRequest
@@ -559,7 +556,6 @@ namespace LiteUa.Transport
                     ClientNonce = _clientNonce,
                     RequestedLifetime = 3600000
                 };
-
 
                 // 1. Body Encoding
                 byte[] bodyBytes;
@@ -699,9 +695,8 @@ namespace LiteUa.Transport
                     }
                 }
                 catch (TaskCanceledException) { }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    Console.WriteLine($"FATAL: Channel Renewal failed: {ex.Message}");
                     /// TODO: Disconnect? Handle...
                 }
             }, _renewCts.Token);
@@ -971,9 +966,9 @@ namespace LiteUa.Transport
             byte[] secHeaderBytes = new byte[secHeaderLen];
             Array.Copy(rawBody, startPos, secHeaderBytes, 0, secHeaderLen);
 
-            if(_securityMode != MessageSecurityMode.None)
+            if (_securityMode != MessageSecurityMode.None)
             {
-                if(secHeader.SenderCertificate == null)
+                if (secHeader.SenderCertificate == null)
                 {
                     throw new InvalidDataException("Sender certificate must not be null when MessageSecurityMode is different than None.");
                 }
@@ -1138,7 +1133,7 @@ namespace LiteUa.Transport
                         for (int i = 0; i < paddingSize; i++) w.WriteByte(paddingByte);
                     }
 
-                    // Signature Platzhalter
+                    // Signature place holder
                     long sigPos = msFinal.Position;
                     if (signatureSize > 0) w.WriteBytes(new byte[signatureSize]);
 
@@ -1161,15 +1156,18 @@ namespace LiteUa.Transport
 
                     // G. Encryption
                     // MsgHeader(12) + TokenId(4) = 16.
-                    int cryptoStartOffset = 16;
-                    int encryptLen = raw.Length - cryptoStartOffset;
+                    if (_securityMode == MessageSecurityMode.SignAndEncrypt)
+                    {
+                        // MsgHeader(12) + TokenId(4) = 16.
+                        int cryptoStartOffset = 16;
+                        int encryptLen = raw.Length - cryptoStartOffset;
 
-                    byte[] dataToEncrypt = new byte[encryptLen];
-                    Array.Copy(raw, cryptoStartOffset, dataToEncrypt, 0, encryptLen);
+                        byte[] dataToEncrypt = new byte[encryptLen];
+                        Array.Copy(raw, cryptoStartOffset, dataToEncrypt, 0, encryptLen);
 
-                    byte[] encryptedData = _securityPolicy.EncryptSymmetric(dataToEncrypt);
-
-                    Array.Copy(encryptedData, 0, raw, cryptoStartOffset, encryptedData.Length);
+                        byte[] encryptedData = _securityPolicy.EncryptSymmetric(dataToEncrypt);
+                        Array.Copy(encryptedData, 0, raw, cryptoStartOffset, encryptedData.Length);
+                    }
 
                     await _stream.WriteAsync(raw, cancellationToken);
                 }
@@ -1229,7 +1227,7 @@ namespace LiteUa.Transport
             byte[] decryptedBytes;
             int cryptoStartOffset = 4; // TokenId Size
 
-            if (_securityMode != MessageSecurityMode.None)
+            if (_securityMode == MessageSecurityMode.SignAndEncrypt)
             {
                 int encryptedLen = totalBodyLen - cryptoStartOffset;
                 byte[] cipherText = new byte[encryptedLen];
@@ -1261,6 +1259,37 @@ namespace LiteUa.Transport
                 int cleanPayloadLen = dataLen - paddingSize;
                 decryptedBytes = new byte[cleanPayloadLen];
                 Array.Copy(plainTextPart, 0, decryptedBytes, 0, cleanPayloadLen);
+            }
+            else if (_securityMode == MessageSecurityMode.Sign)
+            {
+                int sigSize = _securityPolicy.SymmetricSignatureSize;
+
+                // Structure: [TokenId(4)] [SequenceHeader] [Body] [Signature]
+                // fullBody: [TokenId] + [Rest]
+
+                int dataLen = totalBodyLen - 4 - sigSize; // Length of Sequence + Body
+                if (dataLen < 0) throw new Exception("Message too short for signature.");
+
+                byte[] signature = new byte[sigSize];
+                Array.Copy(fullBody, 4 + dataLen, signature, 0, sigSize);
+
+                // Verify: [BaseHeader(8)] + [ChannelId(4)] + [TokenId(4)] + [Sequence+Body]
+                int signedDataLen = 8 + 4 + 4 + dataLen;
+                byte[] dataToVerify = new byte[signedDataLen];
+                int off = 0;
+                Array.Copy(headerBase, 0, dataToVerify, off, 8); off += 8;
+                Array.Copy(channelIdBuf, 0, dataToVerify, off, 4); off += 4;
+                // TokenId + Data
+                Array.Copy(fullBody, 0, dataToVerify, off, 4 + dataLen);
+
+                if (!_securityPolicy.VerifySymmetric(dataToVerify, signature))
+                {
+                    throw new Exception("Symmetric Signature Verification Failed!");
+                }
+
+                // Payload (Sequence + Body)
+                decryptedBytes = new byte[dataLen];
+                Array.Copy(fullBody, 4, decryptedBytes, 0, dataLen);
             }
             else
             {
@@ -1437,7 +1466,7 @@ namespace LiteUa.Transport
             return resp.Results;
         }
 
-        public async Task<GetEndpointsResponse> GetEndpointsAsync()
+        public async Task<GetEndpointsResponse> GetEndpointsAsync(CancellationToken cancellationToken = default)
         {
             var req = new GetEndpointsRequest
             {
@@ -1445,7 +1474,7 @@ namespace LiteUa.Transport
                 RequestHeader = CreateRequestHeader(),
             };
 
-            return await SendRequestAsync<GetEndpointsRequest, GetEndpointsResponse>(req);
+            return await SendRequestAsync<GetEndpointsRequest, GetEndpointsResponse>(req, cancellationToken);
         }
 
         private static async Task<int> ReadExactAsync(NetworkStream stream, byte[] buffer, int count, CancellationToken cancellationToken)
@@ -1528,7 +1557,7 @@ namespace LiteUa.Transport
             chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
             chain.ChainPolicy.VerificationFlags = X509VerificationFlags.NoFlag;
 
-            if(allowUnknownAuthority)
+            if (allowUnknownAuthority)
                 chain.ChainPolicy.VerificationFlags |= X509VerificationFlags.AllowUnknownCertificateAuthority;
 
             bool osValid = chain.Build(cert);

@@ -1,9 +1,4 @@
 ﻿using LiteUa.Encoding;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 /// TODO: Add unit tests
 /// TODI: Add ToString() method

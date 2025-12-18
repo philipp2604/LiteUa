@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace LiteUa.Security.Policies
+﻿namespace LiteUa.Security.Policies
 {
     /// <summary>
     /// An interface defining the contract for security policies in OPC UA.

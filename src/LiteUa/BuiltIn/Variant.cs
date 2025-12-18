@@ -1,9 +1,4 @@
 ﻿using LiteUa.Encoding;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.BuiltIn
 {
@@ -68,7 +63,6 @@ namespace LiteUa.BuiltIn
                     IsArray = true;
                 }
             }
-
         }
 
         /// <summary>
@@ -281,6 +275,7 @@ namespace LiteUa.BuiltIn
                 case BuiltInType.ExtensionObject: ((ExtensionObject)value).Encode(writer); break;
                 case BuiltInType.Null:
                     break;
+
                 case BuiltInType.ExpandedNodeId: ((ExpandedNodeId)value).Encode(writer); break;
                 case BuiltInType.DataValue: ((DataValue)value).Encode(writer); break;
                 case BuiltInType.Variant: ((Variant)value).Encode(writer); break;
