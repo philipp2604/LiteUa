@@ -1,5 +1,9 @@
 ﻿# LiteUa 🔗
 
+[![Language](https://img.shields.io/badge/language-C%23-blue.svg)](https://docs.microsoft.com/en-us/dotnet/csharp/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![GitHub issues](https://img.shields.io/github/issues/philipp2604/LiteUa)](https://github.com/philipp2604/LiteUa/issues)  
+
 **LiteUa** is a native, lightweight, and dependency-free OPC UA Client Library written entirely in C# from scratch.
 
 Unlike other libraries that wrap the official OPC Foundation .NET Stack (which imposes GPL licensing constraints) or commercial SDKs, LiteUa implements the OPC UA binary protocol directly on top of TCP. This makes it extremely fast, lean, and permissive-license friendly.
@@ -14,6 +18,7 @@ Unlike other libraries that wrap the official OPC Foundation .NET Stack (which i
 - **Pure C#**: Fully managed code without native wrappers.
 - **High Performance**: Features a built-in `ConnectionPool` for request-heavy scenarios.
 - **Resilient**: Includes a `SubscriptionClient` with automatic reconnection and self-healing capabilities.
+- **Tested**: Everything is tested using integration tests against Siemens S7-1200 (modeled OPC Server interface) and S7-1500 controllers (standard Simatic OPC Server interface).
 
 ### 📦 Dependencies & Licenses
 

@@ -1,11 +1,13 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Client;
+using LiteUa.Client.Subscriptions;
 using LiteUa.Encoding;
 using LiteUa.Security;
 using LiteUa.Security.Policies;
 using LiteUa.Stack.Method;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
+using LiteUa.Transport;
 using System.ComponentModel;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -33,6 +35,415 @@ namespace LiteUa.Tests.IntegrationTests.Client
         {
             CustomUaTypeRegistry.Register<TestStruct>(new NodeId(4, 258), TestStruct.Decode, (val, w) => val.Encode(w));
         }
+
+        #region Connect, Subscribe and Reconnect tests
+
+        [Fact]
+        public async Task Connect_And_Subscribe_Should_Reconnect_On_Loss_Anonymous_Unsecure()
+        {
+            // 1. Arrange
+            await using var client = UaClient.Create()
+                .ForEndpoint(ServerUrl)
+                .WithSecurity(s =>
+                {
+                    s.AutoAcceptUntrustedCertificates = true;
+                    s.MessageSecurityMode = MessageSecurityMode.None;
+                    s.PolicyType = SecurityPolicyType.None;
+                    s.UserTokenPolicyType = SecurityPolicyType.None;
+                    s.UserTokenType = UserTokenType.Anonymous;
+                })
+                .WithSession(s =>
+                {
+                })
+                .WithPool(p =>
+                {
+                    p.MaxSize = 1;
+                })
+                .Build();
+
+            var tcsInitial = new TaskCompletionSource<bool>();
+            var tcsAfterReconnect = new TaskCompletionSource<bool>();
+            int updateCount = 0;
+
+            // 2. Act
+            await client.ConnectAsync();
+            await client.SubscribeAsync(
+                [
+                    new(0, 2254)
+                ],
+                [
+                    (h, v) =>
+                    {
+                        updateCount++;
+
+                        if(!tcsInitial.Task.IsCompleted)
+                            tcsInitial.TrySetResult(true);
+                        else
+                            tcsAfterReconnect.TrySetResult(true);
+
+                    }
+                ]);
+
+            var result1 = await tcsInitial.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.True(result1);
+
+            var subClientField = typeof(UaClient).GetField("_subscriptionClient", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var subClient = (SubscriptionClient?)subClientField?.GetValue(client);
+            var channelField = typeof(SubscriptionClient).GetField("_channel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var channel = (UaTcpClientChannel?)channelField?.GetValue(subClient);
+            if (channel != null)
+                await channel.DisposeAsync();
+
+            await Task.Delay(8000);
+
+            var result2 = await tcsAfterReconnect.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            // 3. Assert
+            Assert.True(result1);
+            Assert.True(result2);
+        }
+
+        [Fact]
+        public async Task Connect_And_Subscribe_Should_Reconnect_On_Loss_Anonymous_Sign()
+        {
+            // 1. Arrange
+            await using var client = UaClient.Create()
+                .ForEndpoint(ServerUrl)
+                .WithSecurity(s =>
+                {
+                    s.AutoAcceptUntrustedCertificates = true;
+                    s.ClientCertificate = _testCertificate;
+                    s.MessageSecurityMode = MessageSecurityMode.Sign;
+                    s.PolicyType = SecurityPolicyType.Basic256Sha256;
+                    s.UserTokenType = UserTokenType.Anonymous;
+                })
+                .WithSession(s =>
+                {
+                })
+                .WithPool(p =>
+                {
+                    p.MaxSize = 1;
+                })
+                .Build();
+
+            var tcsInitial = new TaskCompletionSource<bool>();
+            var tcsAfterReconnect = new TaskCompletionSource<bool>();
+            int updateCount = 0;
+
+            // 2. Act
+            await client.ConnectAsync();
+            await client.SubscribeAsync(
+                [
+                    new(0, 2254)
+                ],
+                [
+                    (h, v) =>
+                    {
+                        updateCount++;
+
+                        if(!tcsInitial.Task.IsCompleted)
+                            tcsInitial.TrySetResult(true);
+                        else
+                            tcsAfterReconnect.TrySetResult(true);
+
+                    }
+                ]);
+
+            var result1 = await tcsInitial.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.True(result1);
+
+            var subClientField = typeof(UaClient).GetField("_subscriptionClient", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var subClient = (SubscriptionClient?)subClientField?.GetValue(client);
+            var channelField = typeof(SubscriptionClient).GetField("_channel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var channel = (UaTcpClientChannel?)channelField?.GetValue(subClient);
+            if (channel != null)
+                await channel.DisposeAsync();
+
+            await Task.Delay(8000);
+
+            var result2 = await tcsAfterReconnect.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            // 3. Assert
+            Assert.True(result1);
+            Assert.True(result2);
+        }
+
+        [Fact]
+        public async Task Connect_And_Subscribe_Should_Reconnect_On_Loss_Anonymous_SignAndEncrypt()
+        {
+            // 1. Arrange
+            await using var client = UaClient.Create()
+                .ForEndpoint(ServerUrl)
+                .WithSecurity(s =>
+                {
+                    s.AutoAcceptUntrustedCertificates = true;
+                    s.ClientCertificate = _testCertificate;
+                    s.MessageSecurityMode = MessageSecurityMode.SignAndEncrypt;
+                    s.PolicyType = SecurityPolicyType.Basic256Sha256;
+                    s.UserTokenType = UserTokenType.Anonymous;
+                })
+                .WithSession(s =>
+                {
+                })
+                .WithPool(p =>
+                {
+                    p.MaxSize = 1;
+                })
+                .Build();
+
+            var tcsInitial = new TaskCompletionSource<bool>();
+            var tcsAfterReconnect = new TaskCompletionSource<bool>();
+            int updateCount = 0;
+
+            // 2. Act
+            await client.ConnectAsync();
+            await client.SubscribeAsync(
+                [
+                    new(0, 2254)
+                ],
+                [
+                    (h, v) =>
+                    {
+                        updateCount++;
+
+                        if(!tcsInitial.Task.IsCompleted)
+                            tcsInitial.TrySetResult(true);
+                        else
+                            tcsAfterReconnect.TrySetResult(true);
+
+                    }
+                ]);
+
+            var result1 = await tcsInitial.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.True(result1);
+
+            var subClientField = typeof(UaClient).GetField("_subscriptionClient", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var subClient = (SubscriptionClient?)subClientField?.GetValue(client);
+            var channelField = typeof(SubscriptionClient).GetField("_channel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var channel = (UaTcpClientChannel?)channelField?.GetValue(subClient);
+            if (channel != null)
+                await channel.DisposeAsync();
+
+            await Task.Delay(8000);
+
+            var result2 = await tcsAfterReconnect.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            // 3. Assert
+            Assert.True(result1);
+            Assert.True(result2);
+        }
+
+        [Fact]
+        public async Task Connect_And_Subscribe_Should_Reconnect_On_Loss_Username_Unsecure()
+        {
+            // 1. Arrange
+            await using var client = UaClient.Create()
+                .ForEndpoint(ServerUrl)
+                .WithSecurity(s =>
+                {
+                    s.AutoAcceptUntrustedCertificates = true;
+                    s.ClientCertificate = _testCertificate;
+                    s.MessageSecurityMode = MessageSecurityMode.None;
+                    s.PolicyType = SecurityPolicyType.None;
+                    s.UserTokenPolicyType = SecurityPolicyType.Basic256Sha256;
+                    s.UserTokenType = UserTokenType.Username;
+                    s.Username = TestUser;
+                    s.Password = TestPassword;
+                })
+                .WithSession(s =>
+                {
+                })
+                .WithPool(p =>
+                {
+                    p.MaxSize = 1;
+                })
+                .Build();
+
+            var tcsInitial = new TaskCompletionSource<bool>();
+            var tcsAfterReconnect = new TaskCompletionSource<bool>();
+            int updateCount = 0;
+
+            // 2. Act
+            await client.ConnectAsync();
+            await client.SubscribeAsync(
+                [
+                    new(0, 2254)
+                ],
+                [
+                    (h, v) =>
+                    {
+                        updateCount++;
+
+                        if(!tcsInitial.Task.IsCompleted)
+                            tcsInitial.TrySetResult(true);
+                        else
+                            tcsAfterReconnect.TrySetResult(true);
+
+                    }
+                ]);
+
+            var result1 = await tcsInitial.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.True(result1);
+
+            var subClientField = typeof(UaClient).GetField("_subscriptionClient", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var subClient = (SubscriptionClient?)subClientField?.GetValue(client);
+            var channelField = typeof(SubscriptionClient).GetField("_channel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var channel = (UaTcpClientChannel?)channelField?.GetValue(subClient);
+            if (channel != null)
+                await channel.DisposeAsync();
+
+            await Task.Delay(8000);
+
+            var result2 = await tcsAfterReconnect.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            // 3. Assert
+            Assert.True(result1);
+            Assert.True(result2);
+        }
+
+        [Fact]
+        public async Task Connect_And_Subscribe_Should_Reconnect_On_Loss_Username_Sign()
+        {
+            // 1. Arrange
+            await using var client = UaClient.Create()
+                .ForEndpoint(ServerUrl)
+                .WithSecurity(s =>
+                {
+                    s.AutoAcceptUntrustedCertificates = true;
+                    s.ClientCertificate = _testCertificate;
+                    s.MessageSecurityMode = MessageSecurityMode.Sign;
+                    s.PolicyType = SecurityPolicyType.Basic256Sha256;
+                    s.UserTokenPolicyType = SecurityPolicyType.Basic256Sha256;
+                    s.UserTokenType = UserTokenType.Username;
+                    s.Username = TestUser;
+                    s.Password = TestPassword;
+                })
+                .WithSession(s =>
+                {
+                })
+                .WithPool(p =>
+                {
+                    p.MaxSize = 1;
+                })
+                .Build();
+
+            var tcsInitial = new TaskCompletionSource<bool>();
+            var tcsAfterReconnect = new TaskCompletionSource<bool>();
+            int updateCount = 0;
+
+            // 2. Act
+            await client.ConnectAsync();
+            await client.SubscribeAsync(
+                [
+                    new(0, 2254)
+                ],
+                [
+                    (h, v) =>
+                    {
+                        updateCount++;
+
+                        if(!tcsInitial.Task.IsCompleted)
+                            tcsInitial.TrySetResult(true);
+                        else
+                            tcsAfterReconnect.TrySetResult(true);
+
+                    }
+                ]);
+
+            var result1 = await tcsInitial.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.True(result1);
+
+            var subClientField = typeof(UaClient).GetField("_subscriptionClient", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var subClient = (SubscriptionClient?)subClientField?.GetValue(client);
+            var channelField = typeof(SubscriptionClient).GetField("_channel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var channel = (UaTcpClientChannel?)channelField?.GetValue(subClient);
+            if (channel != null)
+                await channel.DisposeAsync();
+
+            await Task.Delay(8000);
+
+            var result2 = await tcsAfterReconnect.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            // 3. Assert
+            Assert.True(result1);
+            Assert.True(result2);
+        }
+
+        [Fact]
+        public async Task Connect_And_Subscribe_Should_Reconnect_On_Loss_SignAndEncrypt()
+        {
+            // 1. Arrange
+            await using var client = UaClient.Create()
+                .ForEndpoint(ServerUrl)
+                .WithSecurity(s =>
+                {
+                    s.AutoAcceptUntrustedCertificates = true;
+                    s.ClientCertificate = _testCertificate;
+                    s.MessageSecurityMode = MessageSecurityMode.SignAndEncrypt;
+                    s.PolicyType = SecurityPolicyType.Basic256Sha256;
+                    s.UserTokenPolicyType = SecurityPolicyType.Basic256Sha256;
+                    s.UserTokenType = UserTokenType.Username;
+                    s.Username = TestUser;
+                    s.Password = TestPassword;
+                })
+                .WithSession(s =>
+                {
+                })
+                .WithPool(p =>
+                {
+                    p.MaxSize = 1;
+                })
+                .Build();
+
+            var tcsInitial = new TaskCompletionSource<bool>();
+            var tcsAfterReconnect = new TaskCompletionSource<bool>();
+            int updateCount = 0;
+
+            // 2. Act
+            await client.ConnectAsync();
+            await client.SubscribeAsync(
+                [
+                    new(0, 2254)
+                ],
+                [
+                    (h, v) =>
+                    {
+                        updateCount++;
+
+                        if(!tcsInitial.Task.IsCompleted)
+                            tcsInitial.TrySetResult(true);
+                        else
+                            tcsAfterReconnect.TrySetResult(true);
+
+                    }
+                ]);
+
+            var result1 = await tcsInitial.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.True(result1);
+
+            var subClientField = typeof(UaClient).GetField("_subscriptionClient", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var subClient = (SubscriptionClient?)subClientField?.GetValue(client);
+            var channelField = typeof(SubscriptionClient).GetField("_channel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var channel = (UaTcpClientChannel?)channelField?.GetValue(subClient);
+            if (channel != null)
+                await channel.DisposeAsync();
+
+            await Task.Delay(8000);
+
+            var result2 = await tcsAfterReconnect.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            // 3. Assert
+            Assert.True(result1);
+            Assert.True(result2);
+        }
+
+        #endregion
 
         #region Connect and Subscribe tests
 
