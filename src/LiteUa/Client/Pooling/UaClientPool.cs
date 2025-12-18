@@ -1,23 +1,62 @@
-﻿using LiteUa.Stack.Session.Identity;
+﻿using LiteUa.Security.Policies;
+using LiteUa.Stack.SecureChannel;
+using LiteUa.Stack.Session.Identity;
 using LiteUa.Transport;
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Security.Cryptography.X509Certificates;
 
 namespace LiteUa.Client.Pooling
 {
-    public class UaClientPool(string endpointUrl, int maxSize = 10, IUserIdentity? userIdentity = null) : IUaClientPool
+    public class UaClientPool : IUaClientPool
     {
-        private readonly string _endpointUrl = endpointUrl;
-        private readonly int _maxSize = maxSize;
-        private readonly IUserIdentity _userIdentity = userIdentity ?? new AnonymousIdentity("Anonymous");
+        private readonly string _endpointUrl;
+        private readonly string _applicationUri;
+        private readonly string _productUri;
+        private readonly string _applicationName;
+        private readonly IUserIdentity _userIdentity;
+        private readonly ISecurityPolicyFactory _securityPolicyFactory;
+        private readonly X509Certificate2? _clientCert;
+        private readonly X509Certificate2? _serverCert;
+        private readonly MessageSecurityMode _securityMode;
+        private readonly int _maxSize;
 
         // Idle clients
-        private readonly ConcurrentBag<UaTcpClientChannel> _clients = [];
-        private readonly SemaphoreSlim _semaphore = new(maxSize, maxSize);
+        private readonly ConcurrentBag<UaTcpClientChannel> _clients;
+
+        private readonly SemaphoreSlim _semaphore;
+
+        public UaClientPool(
+            string endpointUrl,
+            string applicationUri,
+            string productUri,
+            string applicationName,
+            IUserIdentity userIdentity,
+            ISecurityPolicyFactory securityPolicyFactory,
+            MessageSecurityMode securityMode,
+            X509Certificate2? clientCert,
+            X509Certificate2? serverCert,
+            int maxSize)
+        {
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(endpointUrl);
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationUri);
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(productUri);
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationName);
+            ArgumentNullException.ThrowIfNull(userIdentity);
+            ArgumentNullException.ThrowIfNull(securityPolicyFactory);
+
+            _endpointUrl = endpointUrl;
+            _applicationUri = applicationUri;
+            _productUri = productUri;
+            _applicationName = applicationName;
+            _userIdentity = userIdentity;
+            _securityPolicyFactory = securityPolicyFactory;
+            _clientCert = clientCert;
+            _serverCert = serverCert;
+            _securityMode = securityMode;
+            _maxSize = maxSize;
+            _clients = [];
+            _semaphore = new(maxSize, maxSize);
+        }
 
         public async Task<PooledUaClient> RentAsync()
         {
@@ -64,13 +103,12 @@ namespace LiteUa.Client.Pooling
         private async Task<UaTcpClientChannel> CreateNewClientAsync()
         {
             /// TODO: general connection logic via configurable Security Policies, Message Security Modes, etc.
-
-            var client = new UaTcpClientChannel(_endpointUrl); /// TODO: DI
+            var client = new UaTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert);
 
             try
             {
                 await client.ConnectAsync();
-                await client.CreateSessionAsync("urn:pool", "urn:pool", "PoolSession");
+                await client.CreateSessionAsync("PoolSession");
                 await client.ActivateSessionAsync(_userIdentity);
                 return client;
             }

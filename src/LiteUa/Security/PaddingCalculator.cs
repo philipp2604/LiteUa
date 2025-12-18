@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-/// TODO: Add unit tests
+﻿/// TODO: Add unit tests
 
 namespace LiteUa.Security
 {

@@ -1,11 +1,6 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Encoding;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.Stack.Session.Identity
 {
@@ -13,7 +8,7 @@ namespace LiteUa.Stack.Session.Identity
     /// TODO: fix documentation comments
     /// TODO: Add ToString() method
 
-    public class AnonymousIdentity(string policyId) : IUserIdentity
+    public class AnonymousIdentityToken(string policyId = "Anonymous") : IUserIdentity
     {
         public string PolicyId { get; set; } = policyId;
 

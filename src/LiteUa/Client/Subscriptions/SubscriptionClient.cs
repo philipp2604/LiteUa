@@ -4,32 +4,24 @@ using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
 using LiteUa.Stack.Subscription;
 using LiteUa.Transport;
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Channels;
-using System.Threading.Tasks;
 
-namespace LiteUa.Client
+namespace LiteUa.Client.Subscriptions
 {
-    public class SubscriptionClient(
-        string endpointUrl,
-        IUserIdentity? userIdentity = null,
-        ISecurityPolicy? policy = null,
-        X509Certificate2? clientCert = null,
-        X509Certificate2? serverCert = null,
-        MessageSecurityMode mode = MessageSecurityMode.None) : IDisposable, IAsyncDisposable
+    public class SubscriptionClient : IDisposable, IAsyncDisposable
     {
         // Configuration
-        private readonly string _endpointUrl = endpointUrl;
-        private readonly IUserIdentity _userIdentity = userIdentity ?? new AnonymousIdentity("Anonymous");
-        private readonly ISecurityPolicy _policy = policy ?? new SecurityPolicyNone();
-        private readonly X509Certificate2? _clientCert = clientCert;
-        private readonly X509Certificate2? _serverCert = serverCert;
-        private readonly MessageSecurityMode _securityMode = mode;
+        private readonly string _endpointUrl;
+
+        private readonly string _applicationUri;
+        private readonly string _productUri;
+        private readonly string _applicationName;
+        private readonly IUserIdentity _userIdentity;
+        private readonly ISecurityPolicyFactory _securityPolicyFactory;
+        private readonly X509Certificate2? _clientCert;
+        private readonly X509Certificate2? _serverCert;
+        private readonly MessageSecurityMode _securityMode;
 
         // Runtime State
         private UaTcpClientChannel? _channel;
@@ -39,9 +31,12 @@ namespace LiteUa.Client
 
         // Handles
         private uint _nextClientHandle = 1;
+
         private readonly Lock _handleLock = new();
 
         // Lifecycle
+        private readonly TaskCompletionSource _firstConnectionTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         private CancellationTokenSource? _lifecycleCts;
         private Task? _reconnectTask;
         private volatile bool _isConnected = false;
@@ -50,7 +45,28 @@ namespace LiteUa.Client
 
         // Events
         public event Action<uint, DataValue>? DataChanged;
+
         public event Action<bool>? ConnectionStatusChanged;
+
+        public SubscriptionClient(string endpointUrl, string applicationUri, string productUri, string applicationName, IUserIdentity userIdentity, ISecurityPolicyFactory policyFactory, MessageSecurityMode securityMode, X509Certificate2? clientCertificate, X509Certificate2? serverCertificate)
+        {
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(endpointUrl);
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationUri);
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(productUri);
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationName);
+            ArgumentNullException.ThrowIfNull(userIdentity);
+            ArgumentNullException.ThrowIfNull(policyFactory);
+
+            _endpointUrl = endpointUrl;
+            _applicationUri = applicationUri;
+            _productUri = productUri;
+            _applicationName = applicationName;
+            _userIdentity = userIdentity;
+            _securityPolicyFactory = policyFactory;
+            _securityMode = securityMode;
+            _clientCert = clientCertificate;
+            _serverCert = serverCertificate;
+        }
 
         public void Start()
         {
@@ -59,8 +75,46 @@ namespace LiteUa.Client
             _reconnectTask = Task.Run(SupervisorLoop);
         }
 
+        public async Task<uint[]> SubscribeAsync(NodeId[] nodeIds, double publishingInterval = 1000.0)
+        {
+            await _firstConnectionTcs.Task;
+
+            uint[] handles = new uint[nodeIds.Length];
+
+            lock (_handleLock)
+            {
+                for (int i = 0; i < handles.Length; i++)
+                    handles[i] = _nextClientHandle++;
+            }
+
+            var bucket = _buckets.GetOrAdd(publishingInterval, interval => new SubscriptionBucket(interval));
+
+            for (int i = 0; i < nodeIds.Length; i++)
+            {
+                bucket.AddItem(handles[i], nodeIds[i]);
+            }
+
+            if (_isConnected && _channel != null)
+            {
+                try
+                {
+                    await bucket.EnsureSubscriptionCreatedAsync(_channel, OnDataChanged, OnSubscriptionError);
+                    if (bucket.LiveSubscription != null)
+                        await bucket.LiveSubscription.CreateMonitoredItemsAsync(nodeIds, handles);
+                }
+                catch (Exception)
+                {
+                    throw;
+                }
+            }
+            return handles;
+        }
+
+        /*
         public async Task<uint> SubscribeAsync(NodeId nodeId, double publishingInterval = 1000.0)
         {
+            await _firstConnectionTcs.Task;
+
             uint handle;
             lock (_handleLock) handle = _nextClientHandle++;
 
@@ -82,6 +136,7 @@ namespace LiteUa.Client
             }
             return handle;
         }
+        */
 
         private void OnDataChanged(uint handle, DataValue value) => DataChanged?.Invoke(handle, value);
 
@@ -111,6 +166,7 @@ namespace LiteUa.Client
                     {
                         await ConnectAndRestoreAsync();
                         lock (_reconnectLock) { _isConnected = true; _isReconnecting = false; }
+                        _firstConnectionTcs.TrySetResult();
                         ConnectionStatusChanged?.Invoke(true);
                     }
                     catch (Exception)
@@ -141,9 +197,9 @@ namespace LiteUa.Client
             foreach (var bucket in _buckets.Values) bucket.ClearLiveReference();
 
             // create new channel
-            _channel = new UaTcpClientChannel(_endpointUrl, _policy, _clientCert, _serverCert, _securityMode);
+            _channel = new UaTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert);
             await _channel.ConnectAsync();
-            await _channel.CreateSessionAsync("urn:s7nexus:resilient", "urn:s7nexus", "Monitor");
+            await _channel.CreateSessionAsync("SubscriptionMonitoringSession");
             await _channel.ActivateSessionAsync(_userIdentity);
 
             // 3. Restore

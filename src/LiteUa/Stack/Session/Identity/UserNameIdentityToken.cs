@@ -1,12 +1,7 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Encoding;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.Stack.Session.Identity
 {
@@ -15,7 +10,7 @@ namespace LiteUa.Stack.Session.Identity
     /// TODO: Add ToString() method
     /// TODO: Implement different encryption algorithms based on security policy
 
-    public class UserNameIdentity(string policyId, string username, string password) : IUserIdentity
+    public class UserNameIdentityToken(string policyId, string username, string password) : IUserIdentity
     {
         public string PolicyId { get; set; } = policyId;
         public string UserName { get; set; } = username;

@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace LiteUa.Security
+﻿namespace LiteUa.Security
 {
     /// <summary>
     /// A class representing the keys used for signing and encrypting channel tokens.

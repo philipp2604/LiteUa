@@ -1,15 +1,10 @@
 ﻿using LiteUa.Encoding;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.BuiltIn
 {
     /// TODO: Add unit tests
     /// TODI: Add ToString() method
-    
+
     /// <summary>
     /// Represents diagnostic information in OPC UA, providing details about errors or issues.
     /// </summary>
@@ -86,6 +81,5 @@ namespace LiteUa.BuiltIn
 
             throw new NotImplementedException();
         }
-
     }
 }
