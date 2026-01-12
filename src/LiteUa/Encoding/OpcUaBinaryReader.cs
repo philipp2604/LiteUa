@@ -23,21 +23,21 @@ namespace LiteUa.Encoding
         /// </summary>
         public long Length => _stream.Length;
 
-        public bool ReadBoolean()
+        public virtual bool ReadBoolean()
         {
             int val = _stream.ReadByte();
             if (val == -1) throw new EndOfStreamException();
             return val != 0;
         }
 
-        public byte ReadByte()
+        public virtual byte ReadByte()
         {
             int val = _stream.ReadByte();
             if (val == -1) throw new EndOfStreamException();
             return (byte)val;
         }
 
-        public byte[] ReadBytes(int count)
+        public virtual byte[] ReadBytes(int count)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(count);
             if (count == 0) return [];
@@ -53,63 +53,63 @@ namespace LiteUa.Encoding
             return buffer;
         }
 
-        public short ReadInt16()
+        public virtual short ReadInt16()
         {
             Span<byte> buffer = stackalloc byte[2];
             ReadExact(buffer);
             return BinaryPrimitives.ReadInt16LittleEndian(buffer);
         }
 
-        public ushort ReadUInt16()
+        public virtual ushort ReadUInt16()
         {
             Span<byte> buffer = stackalloc byte[2];
             ReadExact(buffer);
             return BinaryPrimitives.ReadUInt16LittleEndian(buffer);
         }
 
-        public int ReadInt32()
+        public virtual int ReadInt32()
         {
             Span<byte> buffer = stackalloc byte[4];
             ReadExact(buffer);
             return BinaryPrimitives.ReadInt32LittleEndian(buffer);
         }
 
-        public uint ReadUInt32()
+        public virtual uint ReadUInt32()
         {
             Span<byte> buffer = stackalloc byte[4];
             ReadExact(buffer);
             return BinaryPrimitives.ReadUInt32LittleEndian(buffer);
         }
 
-        public long ReadInt64()
+        public virtual long ReadInt64()
         {
             Span<byte> buffer = stackalloc byte[8];
             ReadExact(buffer);
             return BinaryPrimitives.ReadInt64LittleEndian(buffer);
         }
 
-        public ulong ReadUInt64()
+        public virtual ulong ReadUInt64()
         {
             Span<byte> buffer = stackalloc byte[8];
             ReadExact(buffer);
             return BinaryPrimitives.ReadUInt64LittleEndian(buffer);
         }
 
-        public float ReadFloat()
+        public virtual float ReadFloat()
         {
             Span<byte> buffer = stackalloc byte[4];
             ReadExact(buffer);
             return BinaryPrimitives.ReadSingleLittleEndian(buffer);
         }
 
-        public double ReadDouble()
+        public virtual double ReadDouble()
         {
             Span<byte> buffer = stackalloc byte[8];
             ReadExact(buffer);
             return BinaryPrimitives.ReadDoubleLittleEndian(buffer);
         }
 
-        public string? ReadString()
+        public virtual string? ReadString()
         {
             int length = ReadInt32();
             if (length == -1) return null;
@@ -121,7 +121,7 @@ namespace LiteUa.Encoding
             return System.Text.Encoding.UTF8.GetString(bytes);
         }
 
-        public DateTime ReadDateTime()
+        public virtual DateTime ReadDateTime()
         {
             long ticks = ReadInt64();
             if (ticks == 0) return DateTime.MinValue;
@@ -135,13 +135,13 @@ namespace LiteUa.Encoding
             }
         }
 
-        public Guid ReadGuid()
+        public virtual Guid ReadGuid()
         {
             byte[] bytes = ReadBytes(16);
             return new Guid(bytes);
         }
 
-        public byte[]? ReadByteString()
+        public virtual byte[]? ReadByteString()
         {
             int length = ReadInt32();
             if (length == -1) return null;

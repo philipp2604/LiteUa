@@ -17,79 +17,79 @@ namespace LiteUa.Encoding
             _stream.Seek(offset, origin);
         }
 
-        public void WriteBoolean(bool value)
+        public virtual void WriteBoolean(bool value)
         {
             _stream.WriteByte((byte)(value ? 1 : 0));
         }
 
-        public void WriteByte(byte value)
+        public virtual void WriteByte(byte value)
         {
             _stream.WriteByte(value);
         }
 
-        public void WriteBytes(byte[] value)
+        public virtual void WriteBytes(byte[] value)
         {
             ArgumentNullException.ThrowIfNull(value);
             _stream.Write(value, 0, value.Length);
         }
 
-        public void WriteInt16(short value)
+        public virtual void WriteInt16(short value)
         {
             Span<byte> buffer = stackalloc byte[2];
             BinaryPrimitives.WriteInt16LittleEndian(buffer, value);
             _stream.Write(buffer);
         }
 
-        public void WriteUInt16(ushort value)
+        public virtual void WriteUInt16(ushort value)
         {
             Span<byte> buffer = stackalloc byte[2];
             BinaryPrimitives.WriteUInt16LittleEndian(buffer, value);
             _stream.Write(buffer);
         }
 
-        public void WriteInt32(int value)
+        public virtual void WriteInt32(int value)
         {
             Span<byte> buffer = stackalloc byte[4];
             BinaryPrimitives.WriteInt32LittleEndian(buffer, value);
             _stream.Write(buffer);
         }
 
-        public void WriteUInt32(uint value)
+        public virtual void WriteUInt32(uint value)
         {
             Span<byte> buffer = stackalloc byte[4];
             BinaryPrimitives.WriteUInt32LittleEndian(buffer, value);
             _stream.Write(buffer);
         }
 
-        public void WriteInt64(long value)
+        public virtual void WriteInt64(long value)
         {
             Span<byte> buffer = stackalloc byte[8];
             BinaryPrimitives.WriteInt64LittleEndian(buffer, value);
             _stream.Write(buffer);
         }
 
-        public void WriteUInt64(ulong value)
+        public virtual void WriteUInt64(ulong value)
         {
             Span<byte> buffer = stackalloc byte[8];
             BinaryPrimitives.WriteUInt64LittleEndian(buffer, value);
             _stream.Write(buffer);
         }
 
-        public void WriteFloat(float value)
+        public virtual void WriteFloat(float value)
         {
             Span<byte> buffer = stackalloc byte[4];
             BinaryPrimitives.WriteSingleLittleEndian(buffer, value);
             _stream.Write(buffer);
         }
 
-        public void WriteDouble(double value)
+        public virtual void WriteDouble(double value)
         {
             Span<byte> buffer = stackalloc byte[8];
             BinaryPrimitives.WriteDoubleLittleEndian(buffer, value);
             _stream.Write(buffer);
         }
 
-        public void WriteString(string? value)
+        public virtual void WriteString(string? value)
         {
             if (value == null)
             {
@@ -106,7 +106,7 @@ namespace LiteUa.Encoding
             }
         }
 
-        public void WriteByteString(byte[]? value)
+        public virtual void WriteByteString(byte[]? value)
         {
             if (value == null)
             {
@@ -120,7 +120,7 @@ namespace LiteUa.Encoding
             }
         }
 
-        public void WriteDateTime(DateTime value)
+        public virtual void WriteDateTime(DateTime value)
         {
             if (value == DateTime.MinValue)
             {
@@ -137,7 +137,7 @@ namespace LiteUa.Encoding
             }
         }
 
-        public void WriteGuid(Guid value)
+        public virtual void WriteGuid(Guid value)
         {
             byte[] guidBytes = value.ToByteArray();
             _stream.Write(guidBytes, 0, 16);

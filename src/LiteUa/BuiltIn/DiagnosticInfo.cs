@@ -2,9 +2,6 @@
 
 namespace LiteUa.BuiltIn
 {
-    /// TODO: Add unit tests
-    /// TODI: Add ToString() method
-
     /// <summary>
     /// Represents diagnostic information in OPC UA, providing details about errors or issues.
     /// </summary>
@@ -77,9 +74,14 @@ namespace LiteUa.BuiltIn
         /// <exception cref="NotImplementedException"></exception>
         public void Encode(OpcUaBinaryWriter writer)
         {
-            ///TODO: Implement encoding.
+            ///TODO: Implement encoding? Is it needed?
 
             throw new NotImplementedException();
+        }
+
+        public override string ToString()
+        {
+            return $"SymbolicId={SymbolicId}, NamespaceUri={NamespaceUri}, LocalizedText={LocalizedText}, Locale={Locale}, AdditionalInfo={AdditionalInfo}, InnerStatusCode={InnerStatusCode}, InnerDiagnosticInfo={InnerDiagnosticInfo}";
         }
     }
 }

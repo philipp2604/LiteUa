@@ -1,11 +1,11 @@
 ﻿using LiteUa.Encoding;
+using System.Text;
 
 namespace LiteUa.BuiltIn
 {
-    /// TODO: Fix documentation comments
-    /// TODO: Add unit tests
-    /// TODI: Add ToString() method
-
+    /// <summary>
+    /// A class representing a NodeId in OPC UA.
+    /// </summary>
     public class NodeId
     {
         private enum NodeIdEncoding : byte
@@ -22,29 +22,91 @@ namespace LiteUa.BuiltIn
             NamespaceUriFlag = 0x80
         }
 
+        /// <summary>
+        /// Initializes a new instance of the NodeId structure with the specified numeric identifier and a default
+        /// namespace index of 0.
+        /// </summary>
+        /// <param name="id">The numeric identifier for the node. This value uniquely identifies the node within the default namespace.</param>
         public NodeId(uint id)
         { NamespaceIndex = 0; NumericIdentifier = id; }
 
+        /// <summary>
+        /// Initializes a new instance of the NodeId structure with the specified namespace index and numeric
+        /// identifier.
+        /// </summary>
+        /// <param name="ns">The namespace index that identifies the namespace of the node. Must be a valid namespace index as defined by
+        /// the application context.</param>
+        /// <param name="id">The numeric identifier for the node within the specified namespace.</param>
         public NodeId(ushort ns, uint id)
         { NamespaceIndex = ns; NumericIdentifier = id; }
 
+        /// <summary>
+        /// Initializes a new instance of the NodeId class using the specified namespace index and string identifier.
+        /// </summary>
+        /// <param name="ns">The namespace index that identifies the namespace of the node. Must be a non-negative value.</param>
+        /// <param name="id">The string identifier that uniquely identifies the node within the specified namespace. Cannot be null.</param>
         public NodeId(ushort ns, string id)
         { NamespaceIndex = ns; StringIdentifier = id; }
 
+        /// <summary>
+        /// Initializes a new instance of the NodeId structure using the specified namespace index and GUID identifier.
+        /// </summary>
+        /// <param name="ns">The namespace index that identifies the namespace of the node. Must be a valid namespace index as defined by
+        /// the application context.</param>
+        /// <param name="id">The GUID that uniquely identifies the node within the specified namespace.</param>
         public NodeId(ushort ns, Guid id)
         { NamespaceIndex = ns; GuidIdentifier = id; }
 
+        /// <summary>
+        /// Initializes a new instance of the NodeId class using the specified namespace index and byte string
+        /// identifier.
+        /// </summary>
+        /// <param name="ns">The namespace index that identifies the namespace of the node. Must be a valid namespace index as defined by
+        /// the application context.</param>
+        /// <param name="id">A byte array that uniquely identifies the node within the specified namespace. Cannot be null.</param>
         public NodeId(ushort ns, byte[] id)
         { NamespaceIndex = ns; ByteStringIdentifier = id; }
 
+        /// <summary>
+        /// Gets the NamespaceIndex of the NodeId.
+        /// </summary>
         public ushort NamespaceIndex { get; private set; }
+
+        /// <summary>
+        /// Gets the NumericIdentifier of the NodeId, if applicable.
+        /// </summary>
         public uint? NumericIdentifier { get; private set; }
+
+        /// <summary>
+        /// Gets the StringIdentifier of the NodeId, if applicable.
+        /// </summary>
         public string? StringIdentifier { get; private set; }
+
+        /// <summary>
+        /// Gets the GuidIdentifier of the NodeId, if applicable.
+        /// </summary>
         public Guid? GuidIdentifier { get; private set; }
+
+        /// <summary>
+        /// Gets the ByteStringIdentifier of the NodeId, if applicable.
+        /// </summary>
         public byte[]? ByteStringIdentifier { get; private set; }
+
+        /// <summary>
+        /// Gets the NamespaceUri of the NodeId, if applicable.
+        /// </summary>
         public string? NamespaceUri { get; private set; }
+
+        /// <summary>
+        /// Gets the ServerIndex of the NodeId, if applicable.
+        /// </summary>
         public uint ServerIndex { get; private set; }
 
+        /// <summary>
+        /// Encodes the NodeId using the provided OpcUaBinaryWriter.
+        /// </summary>
+        /// <param name="writer">The <see cref="OpcUaBinaryWriter"/> to use for encoding.</param>
+        /// <exception cref="NotImplementedException"></exception>
         public void Encode(OpcUaBinaryWriter writer)
         {
             if (NamespaceIndex == 0 && NumericIdentifier.HasValue && NumericIdentifier.Value <= 255)
@@ -76,6 +138,12 @@ namespace LiteUa.BuiltIn
             }
         }
 
+        /// <summary>
+        /// Decodes a NodeId using the provided OpcUaBinaryReader.
+        /// </summary>
+        /// <param name="reader">The <see cref="OpcUaBinaryReader"/> to use.</param>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
         public static NodeId Decode(OpcUaBinaryReader reader)
         {
             byte encodingByte = reader.ReadByte();
@@ -119,10 +187,7 @@ namespace LiteUa.BuiltIn
                 case NodeIdEncoding.ByteString:
                     ushort ns5 = reader.ReadUInt16();
                     byte[]? b5 = reader.ReadByteString();
-                    node = new NodeId(ns5, 0)
-                    {
-                        ByteStringIdentifier = b5
-                    };
+                    node = new NodeId(ns5, b5 ?? []);
                     break;
 
                 default:
@@ -175,6 +240,50 @@ namespace LiteUa.BuiltIn
             else if (ByteStringIdentifier != null) hash = HashCode.Combine(hash, ByteStringIdentifier);
 
             return hash;
+        }
+
+        public override string ToString()
+        {
+            StringBuilder sb = new();
+
+            // 1. Add Server Index (svr=) if it's an ExpandedNodeId component with a non-zero index
+            if (ServerIndex > 0)
+            {
+                sb.Append($"svr={ServerIndex};");
+            }
+
+            // 2. Add Namespace
+            // nsu= is used for NamespaceUri, ns= is used for NamespaceIndex
+            if (!string.IsNullOrEmpty(NamespaceUri))
+            {
+                sb.Append($"nsu={NamespaceUri};");
+            }
+            else if (NamespaceIndex > 0)
+            {
+                sb.Append($"ns={NamespaceIndex};");
+            }
+
+            // 3. Identifier type and value
+            if (NumericIdentifier.HasValue)
+            {
+                sb.Append($"i={NumericIdentifier.Value}");
+            }
+            else if (StringIdentifier != null)
+            {
+                sb.Append($"s={StringIdentifier}");
+            }
+            else if (GuidIdentifier.HasValue)
+            {
+                // GUIDs
+                sb.Append($"g={GuidIdentifier.Value.ToString()}");
+            }
+            else if (ByteStringIdentifier != null)
+            {
+                // ByteStrings as Base64 strings
+                sb.Append($"b={Convert.ToBase64String(ByteStringIdentifier)}");
+            }
+
+            return sb.ToString();
         }
     }
 }
