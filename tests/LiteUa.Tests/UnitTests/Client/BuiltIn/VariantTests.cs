@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace LiteUa.Tests.UnitTests.BuiltIn
+namespace LiteUa.Tests.UnitTests.Client.BuiltIn
 {
     public class VariantTests
     {
@@ -205,7 +205,9 @@ namespace LiteUa.Tests.UnitTests.BuiltIn
         public void ToString_Array_ReturnsFormattedString()
         {
             // Arrange
+#pragma warning disable CA1861
             var variant = new Variant(new double[] { 1.1, 2.2 }, BuiltInType.Double);
+#pragma warning restore CA1861
 
             // Act
             var str = variant.ToString();

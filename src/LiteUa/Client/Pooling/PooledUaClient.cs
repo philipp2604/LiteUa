@@ -2,10 +2,16 @@
 
 namespace LiteUa.Client.Pooling
 {
-    public class PooledUaClient(UaTcpClientChannel client, UaClientPool pool) : IDisposable, IAsyncDisposable
+
+    /// <summary>
+    /// Represents a pooled OPC UA TCP client channel.
+    /// </summary>
+    /// <param name="client">The underlying transport channel.</param>
+    /// <param name="pool">The client pool.</param>
+    public class PooledUaClient(IUaTcpClientChannel client, UaClientPool pool) : IDisposable, IAsyncDisposable
     {
         private readonly UaClientPool _pool = pool;
-        public UaTcpClientChannel InnerClient { get; } = client;
+        public IUaTcpClientChannel InnerClient { get; } = client;
 
         public bool IsInvalid { get; set; }
 

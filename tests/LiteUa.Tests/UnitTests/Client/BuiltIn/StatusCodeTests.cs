@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace LiteUa.Tests.UnitTests.BuiltIn
+namespace LiteUa.Tests.UnitTests.Client.BuiltIn
 {
     public class StatusCodeTests
     {

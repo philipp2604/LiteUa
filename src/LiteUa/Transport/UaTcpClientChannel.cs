@@ -24,7 +24,7 @@ namespace LiteUa.Transport
     /// TODO: fix documentation comments
     /// TODO: Add ToString() method
 
-    public class UaTcpClientChannel : IDisposable, IAsyncDisposable
+    public class UaTcpClientChannel : IUaTcpClientChannel, IDisposable, IAsyncDisposable
     {
         private TcpClient? _client;
         private NetworkStream? _stream;

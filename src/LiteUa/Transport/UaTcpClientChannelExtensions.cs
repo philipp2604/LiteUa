@@ -7,7 +7,7 @@ namespace LiteUa.Transport
     public static class UaTcpClientChannelExtensions
     {
         public static async Task<TOutput> CallTypedAsync<TInput, TOutput>(
-            this UaTcpClientChannel channel, NodeId objectId, NodeId methodId, TInput input, CancellationToken cancellationToken = default)
+            this IUaTcpClientChannel channel, NodeId objectId, NodeId methodId, TInput input, CancellationToken cancellationToken = default)
             where TInput : class
             where TOutput : class, new()
         {

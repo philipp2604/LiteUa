@@ -41,11 +41,12 @@ namespace LiteUa.Client
         public async Task ConnectAsync(CancellationToken cancellationToken = default)
         {
             // 1. Discovery
-            await using var discoveryClient = new DiscoveryClient(
+            var discoveryClient = new DiscoveryClient(
                 _options.EndpointUrl,
                 _options.Session.ApplicationUri,
                 _options.Session.ProductUri,
-                _options.Session.ApplicationName);
+                _options.Session.ApplicationName,
+            new UaTcpClientChannelFactory());
 
             string policyUri = _options.Security.PolicyType switch
             {
@@ -96,7 +97,8 @@ namespace LiteUa.Client
                 _policyFactory,
                 _options.Security.MessageSecurityMode,
                 _options.Security.ClientCertificate,
-                _options.Security.ServerCertificate
+                _options.Security.ServerCertificate,
+                new UaTcpClientChannelFactory()
             );
 
             _subscriptionClient.DataChanged += OnSubscriptionDataChanged;
@@ -113,7 +115,8 @@ namespace LiteUa.Client
                 _options.Security.MessageSecurityMode,
                 _options.Security.ClientCertificate,
                 _options.Security.ServerCertificate,
-                _options.Pool.MaxSize
+                _options.Pool.MaxSize,
+                new UaTcpClientChannelFactory()
             );
         }
 
@@ -267,6 +270,7 @@ namespace LiteUa.Client
             if (_pool != null) await _pool.DisposeAsync();
             if (_subscriptionClient != null) await _subscriptionClient.DisposeAsync();
             _subscriptionCallbacks.Clear();
+            await _options.DisposeAsync();
             GC.SuppressFinalize(this);
         }
 

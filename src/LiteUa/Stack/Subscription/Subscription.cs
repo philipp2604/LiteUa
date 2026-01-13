@@ -6,9 +6,9 @@ using LiteUa.Transport;
 
 namespace LiteUa.Stack.Subscription
 {
-    public class Subscription(UaTcpClientChannel channel) : IAsyncDisposable, IDisposable
+    public class Subscription(IUaTcpClientChannel channel) : IAsyncDisposable, IDisposable
     {
-        private readonly UaTcpClientChannel _channel = channel;
+        private readonly IUaTcpClientChannel _channel = channel;
         private uint _subscriptionId;
         private CancellationTokenSource? _cts;
         private Task? _publishTask;
