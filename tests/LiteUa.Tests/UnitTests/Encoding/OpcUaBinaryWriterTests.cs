@@ -6,6 +6,7 @@ using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Encoding
 {
+    [Trait("Category", "Unit")]
     public class OpcUaBinaryWriterTests
     {
         private static (MemoryStream, OpcUaBinaryWriter) CreateWriter()

@@ -6,6 +6,7 @@ using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Encoding
 {
+    [Trait("Category", "Unit")]
     public class OpcUaBinaryReaderTests
     {
         private static OpcUaBinaryReader CreateReader(byte[] data)

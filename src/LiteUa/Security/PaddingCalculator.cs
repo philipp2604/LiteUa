@@ -1,6 +1,4 @@
-﻿/// TODO: Add unit tests
-
-namespace LiteUa.Security
+﻿namespace LiteUa.Security
 {
     /// <summary>
     /// A class for calculating padding sizes for encryption.

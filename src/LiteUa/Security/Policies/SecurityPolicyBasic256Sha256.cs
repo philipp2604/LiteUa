@@ -1,12 +1,16 @@
 ﻿using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-/// TODO: Add unit tests
-
 namespace LiteUa.Security.Policies
 {
+    /// <summary>
+    /// Security Policy: Basic256Sha256
+    /// </summary>
     public class SecurityPolicyBasic256Sha256 : ISecurityPolicy
     {
+        /// <summary>
+        /// Gets the Security Policy URI.
+        /// </summary>
         public string SecurityPolicyUri => SecurityPolicyUris.Basic256Sha256;
 
         private readonly X509Certificate2 _localCertificate; // Private Key for signing/decrypting
@@ -22,6 +26,13 @@ namespace LiteUa.Security.Policies
 
         private ChannelTokenKeys? _receivingKeys;
 
+        /// <summary>
+        /// Creates a new instance of the SecurityPolicyBasic256Sha256 class.
+        /// </summary>
+        /// <param name="localCertificate">The local <see cref="X509Certificate2"/> to use.</param>
+        /// <param name="remoteCertificate">The remote <see cref="X509Certificate2"/> to use.</param>
+        /// <exception cref="ArgumentNullException"></exception>
+        /// <exception cref="Exception"></exception>
         public SecurityPolicyBasic256Sha256(X509Certificate2 localCertificate, X509Certificate2 remoteCertificate)
         {
             _localCertificate = localCertificate ?? throw new ArgumentNullException(nameof(localCertificate));

@@ -1,8 +1,5 @@
 ﻿using LiteUa.Encoding;
 
-/// TODO: Add unit tests
-/// TODI: Add ToString() method
-
 namespace LiteUa.Security
 {
     /// <summary>
