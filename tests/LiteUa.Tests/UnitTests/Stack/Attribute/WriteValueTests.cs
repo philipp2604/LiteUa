@@ -105,8 +105,8 @@ namespace LiteUa.Tests.UnitTests.Stack.Attribute
             int rangeIdx = callOrder.IndexOf("Range");
             int dvIdx = callOrder.IndexOf("DataValueStart");
 
-            Assert.True(attrIdx < rangeIdx, "AttributeId must be before IndexRange");
-            Assert.True(rangeIdx < dvIdx, "IndexRange must be before DataValue");
+            Assert.True(attrIdx < rangeIdx);
+            Assert.True(rangeIdx < dvIdx);
         }
     }
 }
