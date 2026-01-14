@@ -13,8 +13,9 @@ using System.Collections.Generic;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
-namespace LiteUa.Tests.UnitTests.Subscriptions
+namespace LiteUa.Tests.UnitTests.Client.Subscriptions
 {
+    [Trait("Category", "Unit")]
     public class SubscriptionClientTests
     {
         private readonly Mock<IUaTcpClientChannelFactory> _factoryMock;

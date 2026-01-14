@@ -11,6 +11,7 @@ using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Client.Discovery
 {
+    [Trait("Category", "Unit")]
     public class DiscoveryClientTests
     {
         private readonly Mock<IUaTcpClientChannelFactory> _factoryMock;

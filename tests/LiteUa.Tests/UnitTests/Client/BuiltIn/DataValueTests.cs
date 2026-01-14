@@ -7,6 +7,7 @@ using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Client.BuiltIn
 {
+    [Trait("Category", "Unit")]
     public class DataValueTests
     {
         private readonly Mock<OpcUaBinaryReader> _readerMock;

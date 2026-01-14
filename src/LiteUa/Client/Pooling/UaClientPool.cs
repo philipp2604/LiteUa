@@ -62,6 +62,7 @@ namespace LiteUa.Client.Pooling
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationName);
             ArgumentNullException.ThrowIfNull(userIdentity);
             ArgumentNullException.ThrowIfNull(securityPolicyFactory);
+            ArgumentNullException.ThrowIfNull(tcpClientChannelFactory);
 
             _endpointUrl = endpointUrl;
             _applicationUri = applicationUri;
@@ -78,10 +79,6 @@ namespace LiteUa.Client.Pooling
             _tcpClientChannelFactory = tcpClientChannelFactory;
         }
 
-        /// <summary>
-        /// Rents an UaTcpClientChannel from the pool. If none are available, a new one is created up to the max pool size.
-        /// </summary>
-        /// <returns>An instance of <see cref="PooledUaClient"/>.</returns>
         public async Task<PooledUaClient> RentAsync()
         {
             // Wait for idle client
@@ -108,11 +105,7 @@ namespace LiteUa.Client.Pooling
             }
         }
 
-        /// <summary>
-        /// Returns a UaTcpClientChannel back to the pool.
-        /// </summary>
-        /// <param name="pooledClient">The instance to return.</param>
-        internal void Return(PooledUaClient pooledClient)
+        public void Return(PooledUaClient pooledClient)
         {
             if (pooledClient.IsInvalid)
             {

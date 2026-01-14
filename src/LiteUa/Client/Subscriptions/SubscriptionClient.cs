@@ -13,7 +13,7 @@ namespace LiteUa.Client.Subscriptions
     /// <summary>
     /// Client for managing subscriptions to an OPC UA server, allowing for monitoring of data changes on specified nodes.
     /// </summary>
-    public class SubscriptionClient : IDisposable, IAsyncDisposable
+    public class SubscriptionClient : ISubscriptionClient
     {
         // Configuration
         private readonly string _endpointUrl;
@@ -96,6 +96,7 @@ namespace LiteUa.Client.Subscriptions
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationName);
             ArgumentNullException.ThrowIfNull(userIdentity);
             ArgumentNullException.ThrowIfNull(policyFactory);
+            ArgumentNullException.ThrowIfNull(clientChannelFactory);
 
             _endpointUrl = endpointUrl;
             _applicationUri = applicationUri;
@@ -111,9 +112,6 @@ namespace LiteUa.Client.Subscriptions
             _supervisorIntervalMs = supervisorIntervalMs;
         }
 
-        /// <summary>
-        /// Starts the subscription client, initiating the connection and subscription management loop.
-        /// </summary>
         public void Start()
         {
             if (_lifecycleCts != null) return;
@@ -121,12 +119,6 @@ namespace LiteUa.Client.Subscriptions
             _reconnectTask = Task.Run(SupervisorLoop);
         }
 
-        /// <summary>
-        /// Subscribes to data changes for the specified node IDs with the given publishing interval.
-        /// </summary>
-        /// <param name="nodeIds">The node ids to subscribe to.</param>
-        /// <param name="publishingInterval">The publishing interval.</param>
-        /// <returns>A task encapsulating the returned handles.</returns>
         public async Task<uint[]> SubscribeAsync(NodeId[] nodeIds, double publishingInterval = 1000.0)
         {
             await _firstConnectionTcs.Task;

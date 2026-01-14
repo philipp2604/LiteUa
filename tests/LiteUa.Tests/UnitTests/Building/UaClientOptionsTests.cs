@@ -9,6 +9,7 @@ using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Building
 {
+    [Trait("Category", "Unit")]
     public class UaClientOptionsTests
     {
         [Fact]

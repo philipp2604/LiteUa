@@ -10,7 +10,7 @@ namespace LiteUa.Client.Discovery
     /// Provides functionality to discover OPC UA server endpoints and retrieve endpoint descriptions that match
     /// the specified security and user token requirements.
     /// </summary>
-    public class DiscoveryClient
+    public class DiscoveryClient : IDiscoveryClient
     {
         private readonly string _endpointUrl;
         private readonly string _applicationUri;
@@ -35,6 +35,7 @@ namespace LiteUa.Client.Discovery
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationUri);
             ArgumentNullException.ThrowIfNullOrWhiteSpace(productUri);
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationName);
+            ArgumentNullException.ThrowIfNull(clientChannelFactory);
 
             _userIdentity = new AnonymousIdentityToken();
             _policyFactory = new SecurityPolicyFactoryNone();
@@ -47,14 +48,6 @@ namespace LiteUa.Client.Discovery
             _clientChannelFactory = clientChannelFactory;
         }
 
-        /// <summary>
-        /// Gets the endpoint description that matches the specified security mode, policy URI, and user token type.
-        /// </summary>
-        /// <param name="targetSecurityMode">The target security mode.</param>
-        /// <param name="targetPolicyUri">The target policy uri.</param>
-        /// <param name="targetTokenType">The target UserTokenType.</param>
-        /// <param name="cancellationToken">A <see cref="CancellationToken"/> to control the async operations.</param>
-        /// <returns>An <see cref="EndpointDescription"/> that matches the specified requirements, otherwise null if none was found.</returns>
         public async Task<EndpointDescription?> GetEndpoint(MessageSecurityMode targetSecurityMode, string targetPolicyUri, UserTokenType targetTokenType, CancellationToken cancellationToken = default)
         {
             await using var discovery = _clientChannelFactory.CreateTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _policyFactory, _securityMode, null, null);

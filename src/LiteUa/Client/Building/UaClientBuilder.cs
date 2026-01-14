@@ -1,4 +1,6 @@
-﻿namespace LiteUa.Client.Building
+﻿using LiteUa.Transport;
+
+namespace LiteUa.Client.Building
 {
     /// <summary>
     /// Provides a builder for configuring and creating instances of the UaClient class.
@@ -60,7 +62,7 @@
             if (string.IsNullOrEmpty(_options.EndpointUrl))
                 throw new InvalidOperationException("Endpoint URL must be set.");
 
-            return new UaClient(_options);
+            return new UaClient(_options, new UaTcpClientChannelFactory(), new UaInnerClientsFactory());
         }
     }
 }

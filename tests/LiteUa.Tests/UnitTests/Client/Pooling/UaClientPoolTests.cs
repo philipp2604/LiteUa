@@ -9,8 +9,9 @@ using System.Collections.Generic;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
-namespace LiteUa.Tests.UnitTests.Pooling
+namespace LiteUa.Tests.UnitTests.Client.Pooling
 {
+    [Trait("Category", "Unit")]
     public class UaClientPoolTests
     {
         private readonly Mock<IUaTcpClientChannelFactory> _factoryMock;
