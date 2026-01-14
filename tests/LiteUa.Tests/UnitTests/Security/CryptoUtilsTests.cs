@@ -6,6 +6,7 @@ using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Security
 {
+    [Trait("Category", "Unit")]
     public class CryptoUtilsTests
     {
         #region PSha256 Tests

@@ -5,6 +5,7 @@ using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Security
 {
+    [Trait("Category", "Unit")]
     public class ChannelTokenKeysTests
     {
         [Fact]

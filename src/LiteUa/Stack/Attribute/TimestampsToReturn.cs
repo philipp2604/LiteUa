@@ -1,7 +1,8 @@
 ﻿namespace LiteUa.Stack.Attribute
 {
-    /// TODO: fix documentation comments
-
+    /// <summary>
+    /// Specifies which timestamps to return with a read operation.
+    /// </summary>
     public enum TimestampsToReturn : uint
     {
         Source = 0,

@@ -7,6 +7,7 @@ using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Security
 {
+    [Trait("Category", "Unit")]
     public class ChannelSecurityTokenTests
     {
         private readonly Mock<OpcUaBinaryReader> _readerMock;

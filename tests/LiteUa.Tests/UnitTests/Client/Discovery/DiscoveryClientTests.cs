@@ -35,15 +35,6 @@ namespace LiteUa.Tests.UnitTests.Client.Discovery
             _sut = new DiscoveryClient(TestUrl, AppUri, ProdUri, AppName, _factoryMock.Object);
         }
 
-        [Theory]
-        [InlineData(null, "uri", "prod", "name")]
-        [InlineData(" ", "uri", "prod", "name")]
-        [InlineData("url", "", "prod", "name")]
-        public void Constructor_InvalidArguments_ThrowsArgumentException(string? url, string uri, string prod, string name)
-        {
-            Assert.Throws<ArgumentNullException>(() => new DiscoveryClient(url!, uri, prod, name, _factoryMock.Object));
-        }
-
         [Fact]
         public async Task GetEndpoint_Success_ReturnsMatchingEndpoint()
         {

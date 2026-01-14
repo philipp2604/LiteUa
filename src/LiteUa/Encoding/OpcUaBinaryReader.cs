@@ -13,12 +13,12 @@ namespace LiteUa.Encoding
         /// <summary>
         /// Gets the current position within the stream.
         /// </summary>
-        public long Position => _stream.Position;
+        public virtual long Position => _stream.Position;
 
         /// <summary>
         /// Gets the length of the stream.
         /// </summary>
-        public long Length => _stream.Length;
+        public virtual long Length => _stream.Length;
 
         /// <summary>
         /// Reads a boolean value from the stream.
