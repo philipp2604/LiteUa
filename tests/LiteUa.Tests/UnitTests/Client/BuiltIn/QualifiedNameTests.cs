@@ -97,11 +97,12 @@ namespace LiteUa.Tests.UnitTests.Client.BuiltIn
         public void Properties_AreMutable()
         {
             // Arrange
-            var qn = new QualifiedName(1, "OldName");
-
-            // Act
-            qn.NamespaceIndex = 99;
-            qn.Name = "NewName";
+            var qn = new QualifiedName(1, "OldName")
+            {
+                // Act
+                NamespaceIndex = 99,
+                Name = "NewName"
+            };
 
             // Assert
             Assert.Equal(99, qn.NamespaceIndex);

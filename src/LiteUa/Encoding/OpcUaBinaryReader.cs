@@ -1,8 +1,5 @@
 ﻿using System.Buffers.Binary;
 
-/// TODO: Fix documentation comments
-/// TODO: Add unit tests
-
 namespace LiteUa.Encoding
 {
     /// <summary>
@@ -23,6 +20,11 @@ namespace LiteUa.Encoding
         /// </summary>
         public long Length => _stream.Length;
 
+        /// <summary>
+        /// Reads a boolean value from the stream.
+        /// </summary>
+        /// <returns>The retrieved boolean value.</returns>
+        /// <exception cref="EndOfStreamException"></exception>
         public virtual bool ReadBoolean()
         {
             int val = _stream.ReadByte();
@@ -30,6 +32,11 @@ namespace LiteUa.Encoding
             return val != 0;
         }
 
+        /// <summary>
+        /// Reads a byte value from the stream.
+        /// </summary>
+        /// <returns>The retrieved byte value.</returns>
+        /// <exception cref="EndOfStreamException"></exception>
         public virtual byte ReadByte()
         {
             int val = _stream.ReadByte();
@@ -37,6 +44,11 @@ namespace LiteUa.Encoding
             return (byte)val;
         }
 
+        /// <summary>
+        /// Reads multiple byte values from the stream.
+        /// </summary>
+        /// <returns>The retrieved byte values.</returns>
+        /// <exception cref="EndOfStreamException"></exception>
         public virtual byte[] ReadBytes(int count)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(count);
@@ -53,6 +65,11 @@ namespace LiteUa.Encoding
             return buffer;
         }
 
+        /// <summary>
+        /// Reads an Int16 value from the stream.
+        /// </summary>
+        /// <returns>The retrieved Int16 value.</returns>
+        /// <exception cref="EndOfStreamException"></exception>
         public virtual short ReadInt16()
         {
             Span<byte> buffer = stackalloc byte[2];
@@ -60,6 +77,10 @@ namespace LiteUa.Encoding
             return BinaryPrimitives.ReadInt16LittleEndian(buffer);
         }
 
+        /// <summary>
+        /// Reads an UInt16 value from the stream.
+        /// </summary>
+        /// <returns>The retrieved UInt16 value.</returns>
         public virtual ushort ReadUInt16()
         {
             Span<byte> buffer = stackalloc byte[2];
@@ -67,6 +88,10 @@ namespace LiteUa.Encoding
             return BinaryPrimitives.ReadUInt16LittleEndian(buffer);
         }
 
+        /// <summary>
+        /// Reads an Int32 value from the stream.
+        /// </summary>
+        /// <returns>The retrieved Int32 value.</returns>
         public virtual int ReadInt32()
         {
             Span<byte> buffer = stackalloc byte[4];
@@ -74,6 +99,10 @@ namespace LiteUa.Encoding
             return BinaryPrimitives.ReadInt32LittleEndian(buffer);
         }
 
+        /// <summary>
+        /// Reads an UInt32 value from the stream.
+        /// </summary>
+        /// <returns>The retrieved UInt32 value.</returns>
         public virtual uint ReadUInt32()
         {
             Span<byte> buffer = stackalloc byte[4];
@@ -81,6 +110,10 @@ namespace LiteUa.Encoding
             return BinaryPrimitives.ReadUInt32LittleEndian(buffer);
         }
 
+        /// <summary>
+        /// Reads an Int64 value from the stream.
+        /// </summary>
+        /// <returns>The retrieved Int64 value.</returns>
         public virtual long ReadInt64()
         {
             Span<byte> buffer = stackalloc byte[8];
@@ -88,6 +121,10 @@ namespace LiteUa.Encoding
             return BinaryPrimitives.ReadInt64LittleEndian(buffer);
         }
 
+        /// <summary>
+        /// Reads an UInt64 value from the stream.
+        /// </summary>
+        /// <returns>The retrieved UInt64 value.</returns>
         public virtual ulong ReadUInt64()
         {
             Span<byte> buffer = stackalloc byte[8];
@@ -95,6 +132,10 @@ namespace LiteUa.Encoding
             return BinaryPrimitives.ReadUInt64LittleEndian(buffer);
         }
 
+        /// <summary>
+        /// Reads a float value from the stream.
+        /// </summary>
+        /// <returns>The retrieved float value.</returns>
         public virtual float ReadFloat()
         {
             Span<byte> buffer = stackalloc byte[4];
@@ -102,6 +143,10 @@ namespace LiteUa.Encoding
             return BinaryPrimitives.ReadSingleLittleEndian(buffer);
         }
 
+        /// <summary>
+        /// Reads a double value from the stream.
+        /// </summary>
+        /// <returns>The retrieved double value.</returns>
         public virtual double ReadDouble()
         {
             Span<byte> buffer = stackalloc byte[8];
@@ -109,6 +154,10 @@ namespace LiteUa.Encoding
             return BinaryPrimitives.ReadDoubleLittleEndian(buffer);
         }
 
+        /// <summary>
+        /// Reads a string value from the stream.
+        /// </summary>
+        /// <returns>The retrieved string value.</returns>
         public virtual string? ReadString()
         {
             int length = ReadInt32();
@@ -121,6 +170,10 @@ namespace LiteUa.Encoding
             return System.Text.Encoding.UTF8.GetString(bytes);
         }
 
+        /// <summary>
+        /// Reads a <see cref="DateTime"/> value from the stream.
+        /// </summary>
+        /// <returns>The retrieved <see cref="DateTime"/> value.</returns>
         public virtual DateTime ReadDateTime()
         {
             long ticks = ReadInt64();
@@ -135,12 +188,20 @@ namespace LiteUa.Encoding
             }
         }
 
+        /// <summary>
+        /// Reads a Guid value from the stream.
+        /// </summary>
+        /// <returns>The retrieved Guid value.</returns>
         public virtual Guid ReadGuid()
         {
             byte[] bytes = ReadBytes(16);
             return new Guid(bytes);
         }
 
+        /// <summary>
+        /// Reads a ByteString value from the stream.
+        /// </summary>
+        /// <returns>The retrieved ByteString value.</returns>
         public virtual byte[]? ReadByteString()
         {
             int length = ReadInt32();

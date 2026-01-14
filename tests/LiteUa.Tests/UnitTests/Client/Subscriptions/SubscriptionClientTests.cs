@@ -43,7 +43,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
             _channelMock.Setup(c => c.SendRequestAsync<CreateMonitoredItemsRequest, CreateMonitoredItemsResponse>(It.IsAny<CreateMonitoredItemsRequest>()))
                 .ReturnsAsync(new CreateMonitoredItemsResponse
                 {
-                    Results = new[] { new MonitoredItemCreateResult { StatusCode = new StatusCode(0), MonitoredItemId = 1 } }
+                    Results = [new MonitoredItemCreateResult { StatusCode = new StatusCode(0), MonitoredItemId = 1 }]
                 });
 
             _channelMock.Setup(c => c.SendRequestAsync<PublishRequest, PublishResponse>(It.IsAny<PublishRequest>()))
@@ -167,7 +167,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
             sut.Start();
             await Task.Delay(50); // Connect
 
-            await sut.SubscribeAsync(new[] { new NodeId(1, 1u) }, 500.0);
+            await sut.SubscribeAsync([new NodeId(1, 1u)], 500.0);
 
             // Act: Simulate connection loss
             var triggerMethod = typeof(SubscriptionClient).GetMethod("TriggerReconnect", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -197,7 +197,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
 
             // Act: Trigger private callback
             var method = typeof(SubscriptionClient).GetMethod("OnDataChanged", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            method?.Invoke(sut, new object[] { 42u, testValue });
+            method?.Invoke(sut, [42u, testValue]);
 
             // Assert
             Assert.Equal(42u, receivedHandle);

@@ -5,6 +5,9 @@
 
 namespace LiteUa.Encoding
 {
+    /// <summary>
+    /// Registry for custom OPC UA data type encoders and decoders.
+    /// </summary>
     public static class CustomUaTypeRegistry
     {
         private static readonly Lock _lock = new();
@@ -14,6 +17,13 @@ namespace LiteUa.Encoding
 
         private static readonly Dictionary<Type, NodeId> _typeIds = [];
 
+        /// <summary>
+        /// Registers a custom OPC UA data type with its encoder and decoder.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="encodingId">The encoding Id of the data type.</param>
+        /// <param name="decoder">The decoding function.</param>
+        /// <param name="encoder">The encoding function.</param>
         public static void Register<T>(NodeId encodingId, Func<OpcUaBinaryReader, T> decoder, Action<T, OpcUaBinaryWriter> encoder)
         {
             lock (_lock)
@@ -30,6 +40,12 @@ namespace LiteUa.Encoding
             }
         }
 
+        /// <summary>
+        /// Tries to get the decoder function for the specified encoding Id.
+        /// </summary>
+        /// <param name="encodingId">The encoding id of the custom data type.</param>
+        /// <param name="decoder">The registered decoder, if found.</param>
+        /// <returns>A bool indicating whether the decoder was found.</returns>
         public static bool TryGetDecoder(NodeId encodingId, out Func<OpcUaBinaryReader, object>? decoder)
         {
             lock (_lock)
@@ -38,6 +54,13 @@ namespace LiteUa.Encoding
             }
         }
 
+        /// <summary>
+        /// Tries to get the encoder function and encoding Id for the specified type.
+        /// </summary>
+        /// <param name="type">The data type to get the encoding function and encoding id for.</param>
+        /// <param name="encoder">The encoding function, if found.</param>
+        /// <param name="encodingId">The encoding id, if found.</param>
+        /// <returns></returns>
         public static bool TryGetEncoder(Type type, out Action<object, OpcUaBinaryWriter>? encoder, out NodeId? encodingId)
         {
             lock (_lock)
@@ -52,6 +75,10 @@ namespace LiteUa.Encoding
             }
         }
 
+        /// <summary>
+        /// Unregisters the custom data type of type <typeparamref name="T"/>.
+        /// </summary>
+        /// <typeparam name="T">Data type to unregister.</typeparam>
         public static void Unregister<T>()
         {
             lock (_lock)
@@ -66,6 +93,9 @@ namespace LiteUa.Encoding
             }
         }
 
+        /// <summary>
+        /// Clears all registered custom data types.
+        /// </summary>
         public static void Clear()
         {
             lock (_lock)

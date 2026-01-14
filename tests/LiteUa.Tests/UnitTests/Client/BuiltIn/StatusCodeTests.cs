@@ -84,10 +84,11 @@ namespace LiteUa.Tests.UnitTests.Client.BuiltIn
         public void CodeProperty_IsMutable()
         {
             // Arrange
-            var status = new StatusCode(0);
-
-            // Act
-            status.Code = 0x80000000;
+            var status = new StatusCode(0)
+            {
+                // Act
+                Code = 0x80000000
+            };
 
             // Assert
             Assert.Equal(0x80000000u, status.Code);

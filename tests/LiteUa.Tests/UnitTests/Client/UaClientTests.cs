@@ -63,7 +63,7 @@ namespace LiteUa.Tests.UnitTests.Client
             // Arrange
             var endpoint = new EndpointDescription
             {
-                UserIdentityTokens = new[] { new UserTokenPolicy { TokenType = (int)UserTokenType.Anonymous } }
+                UserIdentityTokens = [new UserTokenPolicy { TokenType = (int)UserTokenType.Anonymous }]
             };
             _discoveryMock.Setup(d => d.GetEndpoint(It.IsAny<MessageSecurityMode>(), It.IsAny<string>(), It.IsAny<UserTokenType>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(endpoint);
@@ -91,7 +91,7 @@ namespace LiteUa.Tests.UnitTests.Client
                 .ThrowsAsync(new Exception("Network Error"));
 
             // Act & Assert
-            await Assert.ThrowsAsync<Exception>(() => _sut.ReadNodesAsync(new[] { new NodeId(10) }));
+            await Assert.ThrowsAsync<Exception>(() => _sut.ReadNodesAsync([new NodeId(10)]));
 
             Assert.True(pooledClient.IsInvalid);
             _poolMock.Verify(p => p.RentAsync(), Times.Once);
@@ -107,14 +107,14 @@ namespace LiteUa.Tests.UnitTests.Client
             _subClientMock.Setup(s => s.SubscribeAsync(nodeIds, It.IsAny<double>())).ReturnsAsync(handles);
 
             bool callbackCalled = false;
-            Action<uint, DataValue> myCallback = (h, v) => callbackCalled = true;
+            void myCallback(uint h, DataValue v) => callbackCalled = true;
 
             // Act
             await _sut.SubscribeAsync(nodeIds, myCallback);
 
             // Simulate event from internal SubscriptionClient
             var privateMethod = typeof(UaClient).GetMethod("OnSubscriptionDataChanged", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            privateMethod?.Invoke(_sut, new object[] { 50u, new DataValue() });
+            privateMethod?.Invoke(_sut, [50u, new DataValue()]);
 
             // Assert
             Assert.True(callbackCalled);
@@ -134,7 +134,7 @@ namespace LiteUa.Tests.UnitTests.Client
                 .ReturnsAsync(badResult);
 
             // Act & Assert
-            var ex = await Assert.ThrowsAsync<Exception>(() => _sut.WriteNodesAsync(new[] { new NodeId(1) }, new[] { new DataValue() }));
+            var ex = await Assert.ThrowsAsync<Exception>(() => _sut.WriteNodesAsync([new NodeId(1)], [new DataValue()]));
             Assert.Contains("Write failed", ex.Message);
         }
 
@@ -142,7 +142,7 @@ namespace LiteUa.Tests.UnitTests.Client
         public async Task EnsureConnected_Throws_WhenNotConnected()
         {
             // Act & Assert
-            await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.ReadNodesAsync(new[] { new NodeId(1) }));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.ReadNodesAsync([new NodeId(1)]));
         }
 
         [Fact]
