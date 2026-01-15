@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![GitHub issues](https://img.shields.io/github/issues/philipp2604/LiteUa)](https://github.com/philipp2604/LiteUa/issues)  
 
-**LiteUa** is a native, lightweight, and dependency-free OPC UA Client Library written entirely in C# from scratch.
+**LiteUa** is a native, lightweight, and low-dependency OPC UA Client Library written entirely in C# from scratch.
 
 Unlike other libraries that wrap the official OPC Foundation .NET Stack (which imposes GPL licensing constraints) or commercial SDKs, LiteUa implements the OPC UA binary protocol directly on top of TCP. This makes it extremely fast, lean, and permissive-license friendly.
 
@@ -22,7 +22,7 @@ Unlike other libraries that wrap the official OPC Foundation .NET Stack (which i
 
 ### 📦 Dependencies & Licenses
 
-While the **LiteUa** core library is strictly dependency-free to ensure ease of licensing, the **Test Projects** utilize external packages (e.g., xUnit, Microsoft.NET.Test.Sdk) to ensure code quality and protocol correctness.
+While the **LiteUa** core library is low-dependency to ensure ease of licensing, the **Test Projects** utilize external packages (e.g., xUnit, Microsoft.NET.Test.Sdk) to ensure code quality and protocol correctness.
 
 For a full list of dependencies used in the test environment, please refer to:
 📄 **[THIRD-PARTY-PACKAGES.md](./tests/LiteUa.Tests/THIRD-PARTY-PACKAGES.md)**
