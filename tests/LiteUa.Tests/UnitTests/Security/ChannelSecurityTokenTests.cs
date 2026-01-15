@@ -24,7 +24,7 @@ namespace LiteUa.Tests.UnitTests.Security
             uint expectedChannelId = 12345;
             uint expectedTokenId = 1;
             uint expectedLifetime = 3600000;
-            DateTime expectedCreatedAt = new DateTime(2024, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+            DateTime expectedCreatedAt = new(2024, 1, 1, 12, 0, 0, DateTimeKind.Utc);
 
             _readerMock.SetupSequence(r => r.ReadUInt32())
                 .Returns(expectedChannelId)

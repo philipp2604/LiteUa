@@ -123,6 +123,7 @@ namespace LiteUa.Tests.UnitTests.Security.Policies
         {
             _certA.Dispose();
             _certB.Dispose();
+            GC.SuppressFinalize(this);
         }
     }
 }

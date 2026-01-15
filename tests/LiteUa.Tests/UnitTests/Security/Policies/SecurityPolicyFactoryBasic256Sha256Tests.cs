@@ -86,6 +86,7 @@ namespace LiteUa.Tests.UnitTests.Security.Policies
         public void Dispose()
         {
             _testCert.Dispose();
+            GC.SuppressFinalize(this);
         }
     }
 }

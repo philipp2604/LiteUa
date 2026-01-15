@@ -14,6 +14,7 @@ using LiteUa.Stack.Subscription.MonitoredItem;
 using LiteUa.Stack.View;
 using LiteUa.Transport.Headers;
 using LiteUa.Transport.TcpMessages;
+using System.Buffers.Binary;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -944,7 +945,7 @@ namespace LiteUa.Transport
             byte[] channelIdBuf = new byte[4];
             await ReadExactAsync(_stream, channelIdBuf, 4, cancellationToken);
 
-            SecureChannelId = BitConverter.ToUInt32(channelIdBuf, 0);
+            SecureChannelId = BinaryPrimitives.ReadUInt32LittleEndian(channelIdBuf);
 
             // Body Size = Total Size - 12 Bytes Header (8 Base + 4 ChannelId)
             int bodyLen = (int)(msgSize - 12);
