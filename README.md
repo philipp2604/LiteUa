@@ -14,7 +14,7 @@ Unlike other libraries that wrap the official OPC Foundation .NET Stack (which i
 
 ## 🚀 Why LiteUa?
 
-- **Zero 3rd Party Dependencies**: The core library is built directly on `System.Net.Sockets` and `System.Buffers`. No dependency on the official OPC Foundation Stack. No GPL viral licensing issues.
+- **One 3rd Party Dependencies**: The core library is built directly on `System.Net.Sockets` and `System.Buffers`. No dependency on the official OPC Foundation Stack. No GPL viral licensing issues. The only used 3rd Party Dependency is Microsoft.SourceLink.Github (MIT License)
 - **Pure C#**: Fully managed code without native wrappers.
 - **High Performance**: Features a built-in `ConnectionPool` for request-heavy scenarios.
 - **Resilient**: Includes a `SubscriptionClient` with automatic reconnection and self-healing capabilities.
@@ -71,7 +71,7 @@ The library is split into logical layers:
 
 ## 🤝 Contributing
 
-Contributions are welcome! Since this is a "from scratch" implementation, please ensure any PRs maintain the zero-dependency philosophy for the main library.
+Contributions are welcome! Since this is a "from scratch" implementation, please ensure any PRs maintain the almost zero-dependency philosophy for the main library.
 
 ## ⚖️ License
 
