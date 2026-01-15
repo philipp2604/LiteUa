@@ -8,6 +8,7 @@ using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Attribute
 {
+    [Trait("Category", "Unit")]
     public class WriteValueTests
     {
         private readonly Mock<OpcUaBinaryWriter> _writerMock;

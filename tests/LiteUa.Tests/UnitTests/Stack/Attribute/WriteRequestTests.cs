@@ -8,6 +8,7 @@ using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Attribute
 {
+    [Trait("Category", "Unit")]
     public class WriteRequestTests
     {
         private readonly Mock<OpcUaBinaryWriter> _writerMock;
@@ -49,7 +50,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Attribute
 
             var request = new WriteRequest
             {
-                NodesToWrite = new[] { writeValue }
+                NodesToWrite = [writeValue]
             };
 
             // Act
@@ -72,7 +73,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Attribute
             // Arrange
             var request = new WriteRequest
             {
-                NodesToWrite = new[] { new WriteValue(new(100), new() { Value = new(1, BuiltInType.Int32) }) { AttributeId = 666 } }
+                NodesToWrite = [new WriteValue(new(100), new() { Value = new(1, BuiltInType.Int32) }) { AttributeId = 666 }]
             };
 
             var callOrder = new List<string>();

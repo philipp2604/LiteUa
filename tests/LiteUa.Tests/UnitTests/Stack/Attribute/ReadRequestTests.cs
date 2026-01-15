@@ -28,7 +28,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Attribute
 
             var request = new ReadRequest
             {
-                NodesToRead = new[] { new ReadValueId(new(10001)) },
+                NodesToRead = [new ReadValueId(new(10001))],
                 MaxAge = uniqueMaxAge,
                 TimestampsToReturn = (TimestampsToReturn)uniqueTimestampsValue
             };
