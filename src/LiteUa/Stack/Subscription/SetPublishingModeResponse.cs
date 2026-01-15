@@ -4,16 +4,35 @@ using LiteUa.Transport.Headers;
 
 namespace LiteUa.Stack.Subscription
 {
-    /// TODO: Add unit tests
-    /// TODO: fix documentation comments
-    /// TODO: Add ToString() method
+    /// <summary>
+    /// Represents a SetPublishingModeResponse message in the OPC UA protocol.
+    /// </summary>
     public class SetPublishingModeResponse
     {
+        /// <summary>
+        /// Gets the NodeId for the SetPublishingModeResponse message type.
+        /// </summary>
         public static readonly NodeId NodeId = new(802);
+
+        /// <summary>
+        /// Gets or sets the <see cref="ResponseHeader"/> of the SetPublishingModeResponse.
+        /// </summary>
         public ResponseHeader? ResponseHeader { get; set; }
+
+        /// <summary>
+        /// Gets or sets the results of the SetPublishingModeResponse.
+        /// </summary>
         public StatusCode[]? Results { get; set; }
+
+        /// <summary>
+        /// Gets or sets the diagnostic information for the SetPublishingModeResponse.
+        /// </summary>
         public DiagnosticInfo?[]? DiagnosticInfos { get; set; }
 
+        /// <summary>
+        /// Decodes a <see cref="SetPublishingModeResponse"/> using the provided <see cref="OpcUaBinaryReader"/>.
+        /// </summary>
+        /// <param name="reader">The <see cref="OpcUaBinaryReader"/> to use for decoding.</param>
         public void Decode(OpcUaBinaryReader reader)
         {
             ResponseHeader = ResponseHeader.Decode(reader);

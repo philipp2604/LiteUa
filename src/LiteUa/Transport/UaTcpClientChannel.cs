@@ -160,7 +160,7 @@ namespace LiteUa.Transport
             {
                 RequestHeader = CreateRequestHeader(),
                 SubscriptionId = subscriptionId,
-                TimestampsToReturn = 2, // Both
+                TimestampsToReturn = TimestampsToReturn.Both,
                 ItemsToModify = itemsToModify
             };
 

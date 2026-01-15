@@ -1,8 +1,5 @@
 ﻿using LiteUa.BuiltIn;
 
-/// TODO: Fix documentation comments
-/// TODO: Add unit tests
-
 namespace LiteUa.Encoding
 {
     /// <summary>

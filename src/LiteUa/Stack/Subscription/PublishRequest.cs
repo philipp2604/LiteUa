@@ -4,17 +4,30 @@ using LiteUa.Transport.Headers;
 
 namespace LiteUa.Stack.Subscription
 {
-    /// TODO: Add unit tests
-    /// TODO: fix documentation comments
-    /// TODO: Add ToString() method
-
+    /// <summary>
+    /// Represents a PublishRequest message used to request notifications from a subscription in OPC UA.
+    /// </summary>
     public class PublishRequest
     {
+        /// <summary>
+        /// Gets the NodeId for the PublishRequest message.
+        /// </summary>
         public static readonly NodeId NodeId = new(826);
 
+        /// <summary>
+        /// Gets the <see cref="RequestHeader"/> for the PublishRequest message.
+        /// </summary>
         public RequestHeader RequestHeader { get; set; } = new RequestHeader();
+
+        /// <summary>
+        /// Gets or sets the array of <see cref="SubscriptionAcknowledgement"/> for the PublishRequest message.
+        /// </summary>
         public SubscriptionAcknowledgement[] SubscriptionAcknowledgements { get; set; } = [];
 
+        /// <summary>
+        /// Encodes the PublishRequest message using the provided <see cref="OpcUaBinaryWriter"/>.
+        /// </summary>
+        /// <param name="writer">The <see cref="OpcUaBinaryWriter"/> to use for encoding.</param>
         public void Encode(OpcUaBinaryWriter writer)
         {
             NodeId.Encode(writer);
