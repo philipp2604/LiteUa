@@ -41,7 +41,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription.MonitoredItem
                 SamplingInterval = 500.0,
                 QueueSize = 10,
                 DiscardOldest = false,
-                Filter = new ExtensionObject { TypeId = new NodeId(0, 999u), Encoding = 0x01, Body = new byte[] { 0x1 } }
+                Filter = new ExtensionObject { TypeId = new NodeId(0, 999u), Encoding = 0x01, Body = [0x1] }
             };
 
             // Act

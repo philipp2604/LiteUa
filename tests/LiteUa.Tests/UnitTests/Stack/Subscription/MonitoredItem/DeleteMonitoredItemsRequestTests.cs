@@ -45,7 +45,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription.MonitoredItem
         public void Encode_WithItems_WritesCountAndElements()
         {
             // Arrange
-            uint[] ids = { 101, 102 };
+            uint[] ids = [101, 102];
             var request = new DeleteMonitoredItemsRequest
             {
                 SubscriptionId = 55,
@@ -77,7 +77,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription.MonitoredItem
             var request = new DeleteMonitoredItemsRequest
             {
                 SubscriptionId = 9999,
-                MonitoredItemIds = new uint[] { 1 }
+                MonitoredItemIds = [1]
             };
 
             var callOrder = new List<string>();

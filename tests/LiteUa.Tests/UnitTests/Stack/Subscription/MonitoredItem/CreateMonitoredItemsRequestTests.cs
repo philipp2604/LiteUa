@@ -62,7 +62,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription.MonitoredItem
             {
                 SubscriptionId = 55,
                 TimestampsToReturn = TimestampsToReturn.Server,
-                ItemsToCreate = new[] { new MonitoredItemCreateRequest(new ReadValueId(new(123)), 456, new()) }
+                ItemsToCreate = [new MonitoredItemCreateRequest(new ReadValueId(new(123)), 456, new())]
             };
 
             // Act
@@ -90,7 +90,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription.MonitoredItem
             {
                 SubscriptionId = 9999,
                 TimestampsToReturn = TimestampsToReturn.Neither,
-                ItemsToCreate = new[] { new MonitoredItemCreateRequest(new ReadValueId(new(123)), 456, new()) } 
+                ItemsToCreate = [new MonitoredItemCreateRequest(new ReadValueId(new(123)), 456, new())] 
             };
 
             var callOrder = new List<string>();
