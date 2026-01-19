@@ -4,17 +4,35 @@ using LiteUa.Transport.Headers;
 
 namespace LiteUa.Stack.View
 {
-    /// TODO: Add unit tests
-    /// TODO: fix documentation comments
-    /// TODO: Add ToString() method
+    /// <summary>
+    /// Represents the response returned from a TranslateBrowsePathsToNodeIds operation in OPC UA,
+    /// </summary>
     public class TranslateBrowsePathsToNodeIdsResponse
     {
+        /// <summary>
+        /// Gets the NodeId for the TranslateBrowsePathsToNodeIdsResponse type.
+        /// </summary>
         public static readonly NodeId NodeId = new(557);
 
+        /// <summary>
+        /// Gets or sets the <see cref="ResponseHeader"/> associated with the operation.
+        /// </summary>
         public ResponseHeader? ResponseHeader { get; set; }
+
+        /// <summary>
+        /// Gets or sets the collection of browse path results returned by the operation.
+        /// </summary>
         public BrowsePathResult[]? Results { get; set; }
+
+        /// <summary>
+        /// Gets or sets the collection of diagnostic information associated with the operation.
+        /// </summary>
         public DiagnosticInfo?[]? DiagnosticInfos { get; set; }
 
+        /// <summary>
+        /// Decodes the <see cref="TranslateBrowsePathsToNodeIdsResponse"/> using the provided <see cref="OpcUaBinaryReader"/>.
+        /// </summary>
+        /// <param name="reader">The <see cref="OpcUaBinaryReader"/> to use for decoding the instance.</param>
         public void Decode(OpcUaBinaryReader reader)
         {
             ResponseHeader = ResponseHeader.Decode(reader);

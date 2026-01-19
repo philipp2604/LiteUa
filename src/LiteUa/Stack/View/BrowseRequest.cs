@@ -3,21 +3,48 @@ using LiteUa.Encoding;
 using LiteUa.Transport.Headers;
 
 namespace LiteUa.Stack.View
-{
-    /// TODO: Add unit tests
-    /// TODO: fix documentation comments
-    /// TODO: Add ToString() method
-    /// TODO: Implement ViewDescription
-
+{ 
+    /// <summary>
+    /// Represents a request to browse the references of one or more nodes in an OPC UA server address space.
+    /// </summary>
     public class BrowseRequest
     {
+
+        /// TODO: Implement ViewDescription
+
+        /// <summary>
+        /// Gets the NodeId for the BrowseRequest type.
+        /// </summary>
         public static readonly NodeId NodeId = new(527);
 
+        /// <summary>
+        /// Gets or sets the <see cref="RequestHeader"/> for the operation.
+        /// </summary>
         public RequestHeader RequestHeader { get; set; } = new RequestHeader();
-        public ViewDescription? View { get; set; } // Nullable
+
+        /// <summary>
+        /// Gets or sets the description of the view to use for the operation.
+        /// </summary>
+        public ViewDescription? View { get; set; }
+
+        /// <summary>
+        /// Gets or sets the maximum number of references to return per node in a response.
+        /// </summary>
+        /// <remarks>Set this property to 0 to indicate that there is no limit on the number of references
+        /// returned per node.</remarks>
         public uint RequestedMaxReferencesPerNode { get; set; } = 0; // 0 = unlimited
+
+        /// <summary>
+        /// Gets or sets the collection of node browse descriptions to use for the browse operation.
+        /// </summary>
+        /// <remarks>Each element in the array specifies a node and the parameters for browsing its
+        /// references. If the array is null or empty, no nodes will be browsed.</remarks>
         public BrowseDescription[]? NodesToBrowse { get; set; }
 
+        /// <summary>
+        /// Encodes the current object using the specified <see cref="OpcUaBinaryWriter"/>.
+        /// </summary>
+        /// <param name="writer">The <see cref="OpcUaBinaryWriter"/> to use for encoding. Cannot be null.</param>
         public void Encode(OpcUaBinaryWriter writer)
         {
             NodeId.Encode(writer);
