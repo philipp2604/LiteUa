@@ -32,7 +32,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
 
             _channelMock.Setup(c => c.CreateRequestHeader()).Returns(new RequestHeader());
 
-            _channelMock.Setup(c => c.SendRequestAsync<CreateSubscriptionRequest, CreateSubscriptionResponse>(It.IsAny<CreateSubscriptionRequest>()))
+            _channelMock.Setup(c => c.SendRequestAsync<CreateSubscriptionRequest, CreateSubscriptionResponse>(It.IsAny<CreateSubscriptionRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new CreateSubscriptionResponse
                 {
                     SubscriptionId = 123,
@@ -40,13 +40,13 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
                     RevisedMaxKeepAliveCount = 10
                 });
 
-            _channelMock.Setup(c => c.SendRequestAsync<CreateMonitoredItemsRequest, CreateMonitoredItemsResponse>(It.IsAny<CreateMonitoredItemsRequest>()))
+            _channelMock.Setup(c => c.SendRequestAsync<CreateMonitoredItemsRequest, CreateMonitoredItemsResponse>(It.IsAny<CreateMonitoredItemsRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new CreateMonitoredItemsResponse
                 {
                     Results = [new MonitoredItemCreateResult { StatusCode = new StatusCode(0), MonitoredItemId = 1 }]
                 });
 
-            _channelMock.Setup(c => c.SendRequestAsync<PublishRequest, PublishResponse>(It.IsAny<PublishRequest>()))
+            _channelMock.Setup(c => c.SendRequestAsync<PublishRequest, PublishResponse>(It.IsAny<PublishRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new PublishResponse
                 {
                     SubscriptionId = 123,
@@ -89,8 +89,8 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
             // Assert
             Assert.True(isConnected);
             _channelMock.Verify(c => c.ConnectAsync(It.IsAny<CancellationToken>()), Times.Once);
-            _channelMock.Verify(c => c.CreateSessionAsync("SubscriptionMonitoringSession"), Times.Once);
-            _channelMock.Verify(c => c.ActivateSessionAsync(_userIdentityMock.Object), Times.Once);
+            _channelMock.Verify(c => c.CreateSessionAsync("SubscriptionMonitoringSession", It.IsAny<CancellationToken>()), Times.Once);
+            _channelMock.Verify(c => c.ActivateSessionAsync(_userIdentityMock.Object, It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]
@@ -156,7 +156,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
 
             // Assert
             Assert.True(connectionAttempts >= 2);
-            _channelMock.Verify(c => c.ActivateSessionAsync(It.IsAny<IUserIdentity>()), Times.AtLeastOnce);
+            _channelMock.Verify(c => c.ActivateSessionAsync(It.IsAny<IUserIdentity>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
         }
 
         [Fact]
@@ -179,9 +179,9 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
             // 1. Old channel disposed
             _channelMock.Verify(c => c.DisposeAsync(), Times.AtLeastOnce);
             // 2. New channel setup
-            _channelMock.Verify(c => c.CreateSessionAsync("SubscriptionMonitoringSession"), Times.Exactly(2));
+            _channelMock.Verify(c => c.CreateSessionAsync("SubscriptionMonitoringSession", It.IsAny<CancellationToken>()), Times.Exactly(2));
             // 3. RestoreItemsAsync triggers a re-subscription by sending a CreateMonitoredItemsRequest
-            _channelMock.Verify(c => c.SendRequestAsync<CreateMonitoredItemsRequest, CreateMonitoredItemsResponse>(It.IsAny<CreateMonitoredItemsRequest>()), Times.Exactly(2));
+            _channelMock.Verify(c => c.SendRequestAsync<CreateMonitoredItemsRequest, CreateMonitoredItemsResponse>(It.IsAny<CreateMonitoredItemsRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
         }
 
         [Fact]
