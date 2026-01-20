@@ -14,20 +14,20 @@ using LiteUa.Stack.Subscription.MonitoredItem;
 using LiteUa.Stack.View;
 using LiteUa.Transport.Headers;
 using LiteUa.Transport.TcpMessages;
+using System.Buffers.Binary;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
 namespace LiteUa.Transport
 {
-    /// TODO: Add unit tests
-    /// TODO: fix documentation comments
-    /// TODO: Add ToString() method
-
-    public class UaTcpClientChannel : IDisposable, IAsyncDisposable
+    /// <summary>
+    /// Represents a client channel for OPC UA communication over TCP.
+    /// </summary>
+    public class UaTcpClientChannel : IUaTcpClientChannel, IDisposable, IAsyncDisposable
     {
         private TcpClient? _client;
-        private NetworkStream? _stream;
+        private Stream? _stream;
         private readonly string _endpointUrl;
         private readonly string _applicationUri;
         private readonly string _productUri;
@@ -67,6 +67,19 @@ namespace LiteUa.Transport
         public uint MaxMessageSize { get; private set; }
         public uint MaxChunkCount { get; private set; }
 
+        /// <summary>
+        /// Creates a new instance of the <see cref="UaTcpClientChannel"/> class.
+        /// </summary>
+        /// <param name="endpointUrl">The network address of the OPC UA server endpoint (e.g., "opc.tcp://localhost:4840").</param>
+        /// <param name="applicationUri">The globally unique identifier (URI) for the client application instance.</param>
+        /// <param name="productUri">The globally unique identifier (URI) for the client product.</param>
+        /// <param name="applicationName">A human-readable name for the client application.</param>
+        /// <param name="policyFactory">The factory responsible for creating the security policy and cryptographic providers.</param>
+        /// <param name="securityMode">The message security mode (None, Sign, or SignAndEncrypt) to apply to the channel.</param>
+        /// <param name="clientCertificate">The X.509 certificate of the client, used for signing and decryption.</param>
+        /// <param name="serverCertificate">The X.509 certificate of the server, used for encryption and signature verification.</param>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="endpointUrl"/>, <paramref name="applicationUri"/>, <paramref name="productUri"/>, <paramref name="applicationName"/>, or <paramref name="policyFactory"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown if the string parameters are empty or consist only of white space.</exception>
         public UaTcpClientChannel(
             string endpointUrl,
             string applicationUri,
@@ -159,7 +172,7 @@ namespace LiteUa.Transport
             {
                 RequestHeader = CreateRequestHeader(),
                 SubscriptionId = subscriptionId,
-                TimestampsToReturn = 2, // Both
+                TimestampsToReturn = TimestampsToReturn.Both,
                 ItemsToModify = itemsToModify
             };
 
@@ -290,50 +303,46 @@ namespace LiteUa.Transport
 
         public async Task DisconnectAsync()
         {
-            _renewCts?.Cancel();
-
-            // close session if exists
-            if (_authenticationToken.NumericIdentifier != 0)
+            try
             {
-                try
+                if (_renewCts != null && !_renewCts.IsCancellationRequested)
                 {
-                    if (_stream != null)
-                    {
-                        var req = new CloseSessionRequest
-                        {
-                            RequestHeader = CreateRequestHeader(),
-                            DeleteSubscriptions = true
-                        };
-                        await SendRequestAsync<CloseSessionRequest, CloseSessionResponse>(req);
-                    }
-                }
-                catch (Exception)
-                {
-                    throw;
+                    _renewCts.Cancel();
                 }
             }
+            catch (ObjectDisposedException) { }
 
-            // close secure channel if exists
-            if (SecureChannelId != 0)
+            var stream = _stream;
+            var client = _client;
+
+            // 2. Close session
+            if (_authenticationToken.NumericIdentifier != 0 && stream != null)
             {
                 try
                 {
-                    var req = new CloseSecureChannelRequest
-                    {
-                        RequestHeader = CreateRequestHeader()
-                    };
+                    var req = new CloseSessionRequest { RequestHeader = CreateRequestHeader(), DeleteSubscriptions = true };
+                    await SendRequestAsync<CloseSessionRequest, CloseSessionResponse>(req);
+                }
+                catch { /* Ignore network errors during shutdown */ }
+            }
+
+            // 3. Close channel
+            if (SecureChannelId != 0 && stream != null)
+            {
+                try
+                {
+                    var req = new CloseSecureChannelRequest { RequestHeader = CreateRequestHeader() };
                     await SendRequestAsync<CloseSecureChannelRequest, CloseSecureChannelResponse>(req);
                 }
-                catch (Exception)
-                {
-                }
+                catch { /* Ignore network errors during shutdown */ }
             }
-
-            // close socket
-            _stream?.Dispose();
-            _client?.Dispose();
             _stream = null;
             _client = null;
+            SecureChannelId = 0;
+            _authenticationToken = new NodeId(0);
+
+            stream?.Dispose();
+            client?.Dispose();
         }
 
         public RequestHeader CreateRequestHeader()
@@ -355,9 +364,7 @@ namespace LiteUa.Transport
             /// TODO: throw if port invalid
             int port = uri.Port == -1 ? 4840 : uri.Port;
 
-            _client = new TcpClient();
-            await _client.ConnectAsync(uri.Host, port);
-            _stream = _client.GetStream();
+            _stream = await CreateStreamAsync(uri.Host, port, cancellationToken);
 
             // 1. Hello / Acknowledge
             await PerformHandshakeAsync(uri.AbsoluteUri, cancellationToken);
@@ -944,7 +951,7 @@ namespace LiteUa.Transport
             byte[] channelIdBuf = new byte[4];
             await ReadExactAsync(_stream, channelIdBuf, 4, cancellationToken);
 
-            SecureChannelId = BitConverter.ToUInt32(channelIdBuf, 0);
+            SecureChannelId = BinaryPrimitives.ReadUInt32LittleEndian(channelIdBuf);
 
             // Body Size = Total Size - 12 Bytes Header (8 Base + 4 ChannelId)
             int bodyLen = (int)(msgSize - 12);
@@ -1477,7 +1484,7 @@ namespace LiteUa.Transport
             return await SendRequestAsync<GetEndpointsRequest, GetEndpointsResponse>(req, cancellationToken);
         }
 
-        private static async Task<int> ReadExactAsync(NetworkStream stream, byte[] buffer, int count, CancellationToken cancellationToken)
+        private static async Task<int> ReadExactAsync(Stream stream, byte[] buffer, int count, CancellationToken cancellationToken)
         {
             int totalRead = 0;
             while (totalRead < count)
@@ -1586,9 +1593,22 @@ namespace LiteUa.Transport
             }
         }
 
+        protected virtual async Task<Stream> CreateStreamAsync(string host, int port, CancellationToken ct)
+        {
+            _client = new TcpClient();
+            await _client.ConnectAsync(host, port, ct);
+            return _client.GetStream();
+        }
+
         public async ValueTask DisposeAsync()
         {
             await DisconnectAsync();
+
+            var cts = _renewCts;
+            _renewCts = null;
+            cts?.Dispose();
+
+            _lock.Dispose();
             GC.SuppressFinalize(this);
         }
 
@@ -1596,13 +1616,17 @@ namespace LiteUa.Transport
         {
             try
             {
-                DisconnectAsync().Wait(2000);
+                DisconnectAsync().GetAwaiter().GetResult();
             }
             catch { }
 
+            var cts = _renewCts;
+            _renewCts = null;
+            cts?.Dispose();
+
             _stream?.Dispose();
             _client?.Dispose();
-            _renewCts?.Cancel();
+            _lock.Dispose();
             GC.SuppressFinalize(this);
         }
     }

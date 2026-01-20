@@ -2,8 +2,6 @@
 
 namespace LiteUa.Client.Events
 {
-    /// TODO: Add unit tests
-    /// TODI: Add ToString() method
     /// <summary>
     /// Creates a new CertificateValidationEventArgs instance.
     /// </summary>

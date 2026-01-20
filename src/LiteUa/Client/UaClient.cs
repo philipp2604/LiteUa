@@ -12,20 +12,39 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace LiteUa.Client
 {
+    /// <summary>
+    /// An orchestrating OPC UA Client.
+    /// </summary>
     public class UaClient : IDisposable, IAsyncDisposable
     {
         private readonly UaClientOptions _options;
         private readonly ISecurityPolicyFactory _policyFactory;
-        private UaClientPool? _pool;
-        private SubscriptionClient? _subscriptionClient;
+        private readonly IUaTcpClientChannelFactory _tcpClientChannelFactory;
+        private readonly IUaInnerClientsFactory _innerClientsFactory;
 
         // Subscription Callbacks
         private readonly ConcurrentDictionary<uint, Action<uint, DataValue>> _subscriptionCallbacks = new();
 
-        public UaClient(UaClientOptions options)
+        internal IUaClientPool? _pool;
+        internal ISubscriptionClient? _subscriptionClient;
+
+        /// <summary>
+        /// Creates a new instance of the <see cref="UaClient"/> class with the specified options, ChannelFactory, and InnerClientsFactory.
+        /// </summary>
+        /// <param name="options"></param>
+        /// <param name="channelFactory"></param>
+        /// <param name="innerClientsFactory"></param>
+        /// <exception cref="NotImplementedException"></exception>
+        public UaClient(UaClientOptions options, IUaTcpClientChannelFactory channelFactory, IUaInnerClientsFactory innerClientsFactory)
         {
             ArgumentNullException.ThrowIfNull(options);
+            ArgumentNullException.ThrowIfNull(channelFactory);
+            ArgumentNullException.ThrowIfNull(innerClientsFactory);
+
             _options = options;
+            _tcpClientChannelFactory = channelFactory;
+            _innerClientsFactory = innerClientsFactory;
+
 
             _policyFactory = options.Security.PolicyType switch
             {
@@ -35,17 +54,28 @@ namespace LiteUa.Client
             };
         }
 
-        // Builder entry point
+        /// <summary>
+        /// Builder entry point for creating an UaClient.
+        /// </summary>
+        /// <returns>A <see cref="UaClientBuilder"/>.</returns>
         public static UaClientBuilder Create() => new();
 
+        /// <summary>
+        /// Connects the client to the server, performing discovery, security setup, and session establishment.
+        /// </summary>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> to control the async operations.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        /// <exception cref="NotImplementedException"></exception>
+        /// <exception cref="InvalidDataException"></exception>
         public async Task ConnectAsync(CancellationToken cancellationToken = default)
         {
             // 1. Discovery
-            await using var discoveryClient = new DiscoveryClient(
+            var discoveryClient = _innerClientsFactory.CreateDiscoveryClient(
                 _options.EndpointUrl,
                 _options.Session.ApplicationUri,
                 _options.Session.ProductUri,
-                _options.Session.ApplicationName);
+                _options.Session.ApplicationName,
+            _tcpClientChannelFactory);
 
             string policyUri = _options.Security.PolicyType switch
             {
@@ -87,23 +117,7 @@ namespace LiteUa.Client
             };
 
             // 1. Setup Subscription Client
-            _subscriptionClient = new SubscriptionClient(
-                _options.EndpointUrl,
-                _options.Session.ApplicationUri,
-                _options.Session.ProductUri,
-                _options.Session.ApplicationName,
-                identity,
-                _policyFactory,
-                _options.Security.MessageSecurityMode,
-                _options.Security.ClientCertificate,
-                _options.Security.ServerCertificate
-            );
-
-            _subscriptionClient.DataChanged += OnSubscriptionDataChanged;
-            _subscriptionClient.Start();
-
-            // 2. Setup Pool (Request/Response)
-            _pool = new UaClientPool(
+            _subscriptionClient = _innerClientsFactory.CreateSubscriptionClient(
                 _options.EndpointUrl,
                 _options.Session.ApplicationUri,
                 _options.Session.ProductUri,
@@ -113,12 +127,36 @@ namespace LiteUa.Client
                 _options.Security.MessageSecurityMode,
                 _options.Security.ClientCertificate,
                 _options.Security.ServerCertificate,
-                _options.Pool.MaxSize
+                _tcpClientChannelFactory
+            );
+
+            _subscriptionClient.DataChanged += OnSubscriptionDataChanged;
+            _subscriptionClient.Start();
+
+            // 2. Setup Pool (Request/Response)
+            _pool = _innerClientsFactory.CreateUaClientPool(
+                _options.EndpointUrl,
+                _options.Session.ApplicationUri,
+                _options.Session.ProductUri,
+                _options.Session.ApplicationName,
+                identity,
+                _policyFactory,
+                _options.Security.MessageSecurityMode,
+                _options.Security.ClientCertificate,
+                _options.Security.ServerCertificate,
+                _options.Pool.MaxSize,
+                _tcpClientChannelFactory
             );
         }
 
         #region Read / Write / Browse (via Pool)
 
+        /// <summary>
+        /// Reads the specified nodes asynchronously.
+        /// </summary>
+        /// <param name="nodeIds">The nodes to read.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> to control the async operations.</param>
+        /// <returns>A task encapsulating the read DataValues.</returns>
         public async Task<DataValue[]?> ReadNodesAsync(NodeId[] nodeIds, CancellationToken cancellationToken = default)
         {
             EnsureConnected();
@@ -136,6 +174,13 @@ namespace LiteUa.Client
             }
         }
 
+        /// <summary>
+        /// Writes the specified values to the specified nodes asynchronously.
+        /// </summary>
+        /// <param name="nodeIds">The nodes to write to.</param>
+        /// <param name="values">The values to write to the nodes.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> to control the asynchronous operations.</param>
+        /// <returns>A task encapsulating the returned StatusCodes.</returns>
         public async Task<StatusCode[]?> WriteNodesAsync(NodeId[] nodeIds, DataValue[] values, CancellationToken cancellationToken = default)
         {
             EnsureConnected();
@@ -157,6 +202,13 @@ namespace LiteUa.Client
             }
         }
 
+        /// <summary>
+        /// Browses the specified nodes asynchronously.
+        /// </summary>
+        /// <param name="nodeIds">The nodes to browse.</param>
+        /// <param name="maxRefs">Maxmium reference descriptions to return.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> to control the asynchronous operations.</param>
+        /// <returns>A task encapsulating the returned ReferenceDescriptions.</returns>
         public async Task<ReferenceDescription[][]?> BrowseNodesAsync(NodeId[] nodeIds, uint maxRefs = 0, CancellationToken cancellationToken = default)
         {
             EnsureConnected();
@@ -173,6 +225,16 @@ namespace LiteUa.Client
             }
         }
 
+        /// <summary>
+        /// Calls a method on the server with typed input and output arguments.
+        /// </summary>
+        /// <typeparam name="TInput">Input arguments type.</typeparam>
+        /// <typeparam name="TOutput">Output type.</typeparam>
+        /// <param name="objectId">Node Id of the method object.</param>
+        /// <param name="methodId">Node Id of the method.</param>
+        /// <param name="inputArgs">Input arguments of type <typeparamref name="TInput"/>.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> to control the asynchronous operations.</param>
+        /// <returns>A task encapsulating the method's output of type <typeparamref name="TOutput"/></returns>
         public async Task<TOutput> CallMethodAsync<TInput, TOutput>(NodeId objectId, NodeId methodId, TInput inputArgs, CancellationToken cancellationToken = default)
             where TInput : class
             where TOutput : class, new()
@@ -195,6 +257,14 @@ namespace LiteUa.Client
             }
         }
 
+        /// <summary>
+        /// Calls a method on the server with untyped input and output arguments.
+        /// </summary>
+        /// <param name="objectId">Node Id of the method object.</param>
+        /// <param name="methodId">Node Id of the method.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> to control the asynchronous operations.</param>
+        /// <param name="inputArguments">Input arguments for the method call.</param>
+        /// <returns>A task encapsulating the method's output as <see cref="Variant"/> array.</returns>
         public async Task<Variant[]> CallMethodAsync(NodeId objectId, NodeId methodId, CancellationToken cancellationToken = default, params Variant[] inputArguments)
         {
             EnsureConnected();
@@ -219,7 +289,14 @@ namespace LiteUa.Client
 
         #region Subscription (via SubscriptionClient)
 
-        // multiple node Ids, one callback
+        /// <summary>
+        /// Subscribes to data changes for the specified node IDs with a single callback.
+        /// </summary>
+        /// <param name="nodeIds">NodeIds to subscribe to.</param>
+        /// <param name="callback">Callback to call when a data change occured.</param>
+        /// <param name="interval">Sampling interval.</param>
+        /// <returns>A task encapsulating an array of the subscription handles.</returns>
+        /// <exception cref="InvalidOperationException"></exception>
         public async Task<uint[]> SubscribeAsync(NodeId[] nodeIds, Action<uint, DataValue> callback, double interval = 1000.0)
         {
             if (_subscriptionClient == null) throw new InvalidOperationException("Client not connected. Call Connect() first.");
@@ -234,6 +311,14 @@ namespace LiteUa.Client
         }
 
         // multiple node Ids, multiple callbacks
+        /// <summary>
+        /// Subscribes to data changes for the specified node IDs with individual callbacks.
+        /// </summary>
+        /// <param name="nodeIds">NodeIds to subscribe to.</param>
+        /// <param name="callbacks">Caöllbacks for every NodeId that are being called after a data change.</param>
+        /// <param name="interval">Sampling interval.</param>
+        /// <returns>A task encapsulating an array of the subscription handles.</returns>
+        /// <exception cref="InvalidOperationException"></exception>
         public async Task<uint[]> SubscribeAsync(NodeId[] nodeIds, Action<uint, DataValue>[] callbacks, double interval = 1000.0)
         {
             if (_subscriptionClient == null) throw new InvalidOperationException("Client not connected. Call Connect() first.");
@@ -267,6 +352,7 @@ namespace LiteUa.Client
             if (_pool != null) await _pool.DisposeAsync();
             if (_subscriptionClient != null) await _subscriptionClient.DisposeAsync();
             _subscriptionCallbacks.Clear();
+            await _options.DisposeAsync();
             GC.SuppressFinalize(this);
         }
 

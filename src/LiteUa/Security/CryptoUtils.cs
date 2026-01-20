@@ -1,7 +1,5 @@
 ﻿using System.Security.Cryptography;
 
-/// TODO: Add unit tests
-
 namespace LiteUa.Security
 {
     /// <summary>

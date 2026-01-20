@@ -6,9 +6,13 @@ using LiteUa.Transport;
 
 namespace LiteUa.Stack.Subscription
 {
-    public class Subscription(UaTcpClientChannel channel) : IAsyncDisposable, IDisposable
+    /// <summary>
+    /// Represents a Subscription in the OPC UA protocol.
+    /// </summary>
+    /// <param name="channel">The underlying <see cref="IUaTcpClientChannel"/> to use for communication.</param>
+    public class Subscription(IUaTcpClientChannel channel) : IAsyncDisposable, IDisposable
     {
-        private readonly UaTcpClientChannel _channel = channel;
+        private readonly IUaTcpClientChannel _channel = channel;
         private uint _subscriptionId;
         private CancellationTokenSource? _cts;
         private Task? _publishTask;
@@ -18,10 +22,23 @@ namespace LiteUa.Stack.Subscription
         private readonly Queue<SubscriptionAcknowledgement> _pendingAcks = new();
         private readonly Lock _ackLock = new();
 
+        /// <summary>
+        /// A callback invoked when a monitored item's data changes.
+        /// </summary>
         public event Action<uint, DataValue>? DataChanged;
 
+        /// <summary>
+        /// A callback invoked when the connection is lost.
+        /// </summary>
         public event Action<Exception>? ConnectionLost;
 
+        /// <summary>
+        /// Creates multiple monitored items asynchronously.
+        /// </summary>
+        /// <param name="nodeIds">The node ids of the items to monitor.</param>
+        /// <param name="clientHandles">The client handles for the MonitoredItems.</param>
+        /// <returns>The ids of the monitored items.</returns>
+        /// <exception cref="ArgumentException"></exception>
         public async Task<uint[]> CreateMonitoredItemsAsync(NodeId[] nodeIds, uint[] clientHandles)
         {
             if (nodeIds.Length != clientHandles.Length) throw new ArgumentException("Count mismatch");
@@ -46,7 +63,7 @@ namespace LiteUa.Stack.Subscription
                 RequestHeader = _channel.CreateRequestHeader(),
                 SubscriptionId = _subscriptionId,
                 ItemsToCreate = items,
-                TimestampsToReturn = 2 // Both
+                TimestampsToReturn = TimestampsToReturn.Both
             };
 
             var res = await _channel.SendRequestAsync<CreateMonitoredItemsRequest, CreateMonitoredItemsResponse>(req);
@@ -71,6 +88,11 @@ namespace LiteUa.Stack.Subscription
             return results;
         }
 
+        /// <summary>
+        /// Creates the subscription asynchronously.
+        /// </summary>
+        /// <param name="publishingInterval">The publishing interval, default is 1000ms.</param>
+        /// <returns>A task for monitoring the asynchronous operation.</returns>
         public async Task CreateAsync(double publishingInterval = 1000.0)
         {
             var req = new CreateSubscriptionRequest
@@ -94,6 +116,13 @@ namespace LiteUa.Stack.Subscription
             _publishTask = Task.Run(PublishLoop);
         }
 
+        /// <summary>
+        /// Creates a monitored item asynchronously.
+        /// </summary>
+        /// <param name="nodeId">The node id of the item to monitor.</param>
+        /// <param name="clientHandle">The client handle.</param>
+        /// <returns>The Id of the monitored item.</returns>
+        /// <exception cref="Exception"></exception>
         public async Task<uint> CreateMonitoredItemAsync(NodeId nodeId, uint clientHandle)
         {
             var req = new CreateMonitoredItemsRequest
@@ -230,6 +259,10 @@ namespace LiteUa.Stack.Subscription
             }
         }
 
+        /// <summary>
+        /// Deletes the subscription asynchronously from the server.
+        /// </summary>
+        /// <returns>A task to monitor the asynchronous operation.</returns>
         public async Task DeleteAsync()
         {
             // 1. Stop loop
@@ -243,6 +276,11 @@ namespace LiteUa.Stack.Subscription
             }
         }
 
+        /// <summary>
+        /// Deletes monitored items asynchronously from the subscription.
+        /// </summary>
+        /// <param name="monitoredItemIds">The ids of the monitored items to delete.</param>
+        /// <returns>A task to monitor the asynchronous operation.</returns>
         public async Task DeleteMonitoredItemsAsync(uint[] monitoredItemIds)
         {
             try

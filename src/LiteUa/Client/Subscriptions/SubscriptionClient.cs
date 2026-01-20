@@ -9,7 +9,11 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace LiteUa.Client.Subscriptions
 {
-    public class SubscriptionClient : IDisposable, IAsyncDisposable
+
+    /// <summary>
+    /// Client for managing subscriptions to an OPC UA server, allowing for monitoring of data changes on specified nodes.
+    /// </summary>
+    public class SubscriptionClient : ISubscriptionClient
     {
         // Configuration
         private readonly string _endpointUrl;
@@ -22,9 +26,12 @@ namespace LiteUa.Client.Subscriptions
         private readonly X509Certificate2? _clientCert;
         private readonly X509Certificate2? _serverCert;
         private readonly MessageSecurityMode _securityMode;
+        private readonly IUaTcpClientChannelFactory _clientChannelFactory;
+        private readonly int _supervisorIntervalMs;
+        private readonly int _reconnectIntervalMs;
 
         // Runtime State
-        private UaTcpClientChannel? _channel;
+        private IUaTcpClientChannel? _channel;
 
         // Mapping: PublishingInterval -> Bucket
         private readonly ConcurrentDictionary<double, SubscriptionBucket> _buckets = new();
@@ -44,11 +51,44 @@ namespace LiteUa.Client.Subscriptions
         private bool _isReconnecting = false;
 
         // Events
+        /// <summary>
+        /// A callback that is invoked when data changes for a subscribed node.
+        /// </summary>
         public event Action<uint, DataValue>? DataChanged;
 
+        /// <summary>
+        /// A callback that is invoked when the connection status changes.
+        /// </summary>
         public event Action<bool>? ConnectionStatusChanged;
 
-        public SubscriptionClient(string endpointUrl, string applicationUri, string productUri, string applicationName, IUserIdentity userIdentity, ISecurityPolicyFactory policyFactory, MessageSecurityMode securityMode, X509Certificate2? clientCertificate, X509Certificate2? serverCertificate)
+        /// <summary>
+        /// Creates a new instance of the <see cref="SubscriptionClient"/> class.
+        /// </summary>
+        /// <param name="endpointUrl">The server's endpoint url including protocol and port, e.g. 'opc.tcp://192.178.0.1:4840/'.</param>
+        /// <param name="applicationUri">The application uri.</param>
+        /// <param name="productUri">The product uri.</param>
+        /// <param name="applicationName">The application name.</param>
+        /// <param name="userIdentity">The user identity of type <see cref="IUserIdentity"/> to use.</param>
+        /// <param name="policyFactory">An instance of <see cref="ISecurityPolicy"/>.</param>
+        /// <param name="securityMode">The message security mode to use.</param>
+        /// <param name="clientCertificate">Optional: The client's certificate.</param>
+        /// <param name="serverCertificate">Optional: The server's certificate.</param>
+        /// <param name="clientChannelFactory">An instance of <see cref="IUaTcpClientChannelFactory"/>.</param>
+        /// <param name="supervisorIntervalMs">The interval in milliseconds for the supervisor loop to check connection status.</param>
+        /// <param name="reconnectIntervalMs">The interval in milliseconds to wait before attempting to reconnect after a disconnection.</param>
+        public SubscriptionClient(
+            string endpointUrl,
+            string applicationUri,
+            string productUri,
+            string applicationName,
+            IUserIdentity userIdentity,
+            ISecurityPolicyFactory policyFactory,
+            MessageSecurityMode securityMode,
+            X509Certificate2? clientCertificate,
+            X509Certificate2? serverCertificate,
+            IUaTcpClientChannelFactory clientChannelFactory,
+            int supervisorIntervalMs = 1000,
+            int reconnectIntervalMs = 5000)
         {
             ArgumentNullException.ThrowIfNullOrWhiteSpace(endpointUrl);
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationUri);
@@ -56,6 +96,7 @@ namespace LiteUa.Client.Subscriptions
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationName);
             ArgumentNullException.ThrowIfNull(userIdentity);
             ArgumentNullException.ThrowIfNull(policyFactory);
+            ArgumentNullException.ThrowIfNull(clientChannelFactory);
 
             _endpointUrl = endpointUrl;
             _applicationUri = applicationUri;
@@ -66,6 +107,9 @@ namespace LiteUa.Client.Subscriptions
             _securityMode = securityMode;
             _clientCert = clientCertificate;
             _serverCert = serverCertificate;
+            _clientChannelFactory = clientChannelFactory;
+            _reconnectIntervalMs = reconnectIntervalMs;
+            _supervisorIntervalMs = supervisorIntervalMs;
         }
 
         public void Start()
@@ -91,7 +135,7 @@ namespace LiteUa.Client.Subscriptions
 
             for (int i = 0; i < nodeIds.Length; i++)
             {
-                bucket.AddItem(handles[i], nodeIds[i]);
+                await bucket.AddItemAsync(handles[i], nodeIds[i]);
             }
 
             if (_isConnected && _channel != null)
@@ -109,34 +153,6 @@ namespace LiteUa.Client.Subscriptions
             }
             return handles;
         }
-
-        /*
-        public async Task<uint> SubscribeAsync(NodeId nodeId, double publishingInterval = 1000.0)
-        {
-            await _firstConnectionTcs.Task;
-
-            uint handle;
-            lock (_handleLock) handle = _nextClientHandle++;
-
-            var bucket = _buckets.GetOrAdd(publishingInterval, interval => new SubscriptionBucket(interval));
-            bucket.AddItem(handle, nodeId);
-
-            if (_isConnected && _channel != null)
-            {
-                try
-                {
-                    await bucket.EnsureSubscriptionCreatedAsync(_channel, OnDataChanged, OnSubscriptionError);
-                    if(bucket.LiveSubscription != null)
-                        await bucket.LiveSubscription.CreateMonitoredItemAsync(nodeId, handle);
-                }
-                catch (Exception)
-                {
-                    throw;
-                }
-            }
-            return handle;
-        }
-        */
 
         private void OnDataChanged(uint handle, DataValue value) => DataChanged?.Invoke(handle, value);
 
@@ -173,13 +189,13 @@ namespace LiteUa.Client.Subscriptions
                     {
                         if (!_lifecycleCts.IsCancellationRequested)
                         {
-                            await Task.Delay(5000, _lifecycleCts.Token);
+                            await Task.Delay(_reconnectIntervalMs, _lifecycleCts.Token);
                         }
                     }
                 }
                 else
                 {
-                    try { await Task.Delay(1000, _lifecycleCts.Token); } catch { }
+                    try { await Task.Delay(_supervisorIntervalMs, _lifecycleCts.Token); } catch { }
                 }
             }
         }
@@ -197,7 +213,7 @@ namespace LiteUa.Client.Subscriptions
             foreach (var bucket in _buckets.Values) bucket.ClearLiveReference();
 
             // create new channel
-            _channel = new UaTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert);
+            _channel = _clientChannelFactory.CreateTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert);
             await _channel.ConnectAsync();
             await _channel.CreateSessionAsync("SubscriptionMonitoringSession");
             await _channel.ActivateSessionAsync(_userIdentity);
@@ -209,8 +225,6 @@ namespace LiteUa.Client.Subscriptions
                 await bucket.RestoreItemsAsync();
             }
         }
-
-        // --- DISPOSE  ---
 
         public async ValueTask DisposeAsync()
         {
@@ -236,17 +250,11 @@ namespace LiteUa.Client.Subscriptions
             GC.SuppressFinalize(this);
         }
 
-        // --- Inner Class ---
         private class SubscriptionBucket(double interval) : IAsyncDisposable
         {
             public double Interval { get; } = interval; public Subscription? LiveSubscription { get; private set; }
             private readonly Dictionary<uint, NodeId> _items = [];
-            private readonly Lock _lock = new();
-
-            public void AddItem(uint handle, NodeId nodeId)
-            {
-                lock (_lock) _items[handle] = nodeId;
-            }
+            private readonly SemaphoreSlim _asyncLock = new(1, 1);
 
             public void ClearLiveReference()
             {
@@ -254,7 +262,7 @@ namespace LiteUa.Client.Subscriptions
             }
 
             public async Task EnsureSubscriptionCreatedAsync(
-                UaTcpClientChannel channel,
+                IUaTcpClientChannel channel,
                 Action<uint, DataValue> cb,
                 Action<Exception> errCb)
             {
@@ -266,33 +274,54 @@ namespace LiteUa.Client.Subscriptions
                 LiveSubscription = sub;
             }
 
+            public async Task AddItemAsync(uint handle, NodeId nodeId)
+            {
+                await _asyncLock.WaitAsync();
+                try
+                {
+                    _items[handle] = nodeId;
+                }
+                finally
+                {
+                    _asyncLock.Release();
+                }
+            }
+
             public async Task RestoreItemsAsync()
             {
                 if (LiveSubscription == null) return;
 
-                lock (_lock)
+                await _asyncLock.WaitAsync();
+                try
                 {
                     if (_items.Count == 0) return;
 
                     var nodeIds = _items.Values.ToArray();
                     var handles = _items.Keys.ToArray();
-                    try
-                    {
-                        LiveSubscription.CreateMonitoredItemsAsync(nodeIds, handles).Wait();
-                    }
-                    catch (Exception)
-                    {
-                        throw;
-                    }
+
+                    await LiveSubscription.CreateMonitoredItemsAsync(nodeIds, handles);
+                }
+                finally
+                {
+                    _asyncLock.Release();
                 }
             }
 
             public async ValueTask DisposeAsync()
             {
-                if (LiveSubscription != null)
+                await _asyncLock.WaitAsync();
+                try
                 {
-                    await LiveSubscription.DisposeAsync();
-                    LiveSubscription = null;
+                    if (LiveSubscription != null)
+                    {
+                        await LiveSubscription.DisposeAsync();
+                        LiveSubscription = null;
+                    }
+                }
+                finally
+                {
+                    _asyncLock.Release();
+                    _asyncLock.Dispose();
                 }
             }
         }

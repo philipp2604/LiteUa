@@ -2,8 +2,6 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-/// TODO: Add unit tests
-
 namespace LiteUa.Security
 {
     /// <summary>

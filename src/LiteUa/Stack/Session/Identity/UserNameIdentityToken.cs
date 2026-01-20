@@ -1,20 +1,40 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Encoding;
+using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
 namespace LiteUa.Stack.Session.Identity
 {
-    /// TODO: Add unit tests
-    /// TODO: fix documentation comments
-    /// TODO: Add ToString() method
+
     /// TODO: Implement different encryption algorithms based on security policy
 
+    /// <summary>
+    /// Represents a UserNameIdentityToken for OPC UA user authentication.
+    /// </summary>
+    /// <param name="policyId">The policy Id string.</param>
+    /// <param name="username">The username string.</param>
+    /// <param name="password">The password string.</param>
     public class UserNameIdentityToken(string policyId, string username, string password) : IUserIdentity
     {
+        /// <summary>
+        /// Gets or sets the PolicyId for the UserNameIdentityToken.
+        /// </summary>
         public string PolicyId { get; set; } = policyId;
+
+        /// <summary>
+        /// Gets or sets the UserName for the UserNameIdentityToken.
+        /// </summary>
         public string UserName { get; set; } = username;
+
+        /// <summary>
+        /// Gets or sets the Password for the UserNameIdentityToken.
+        /// </summary>
         public string Password { get; set; } = password;
+
+        /// <summary>
+        /// Gets the encryption algorithm URI used for encrypting the password. Currently only RSA-OAEP is supported.
+        /// </summary>
 
         private const string EncryptionAlgo = "http://www.w3.org/2001/04/xmlenc#rsa-oaep";
 
@@ -43,7 +63,8 @@ namespace LiteUa.Stack.Session.Identity
 
                 byte[] dataToEncrypt = new byte[4 + pwLength + nonceLength];
 
-                byte[] lenBytes = BitConverter.GetBytes(lengthField);
+                byte[] lenBytes = new byte[4];
+                BinaryPrimitives.WriteInt32LittleEndian(lenBytes, lengthField);
                 Array.Copy(lenBytes, 0, dataToEncrypt, 0, 4);
 
                 if (pwLength > 0)

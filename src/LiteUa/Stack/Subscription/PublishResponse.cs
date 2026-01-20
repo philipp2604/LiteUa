@@ -4,22 +4,55 @@ using LiteUa.Transport.Headers;
 
 namespace LiteUa.Stack.Subscription
 {
-    /// TODO: Add unit tests
-    /// TODO: fix documentation comments
-    /// TODO: Add ToString() method
-
+    /// <summary>
+    /// Represents a PublishResponse message in the OPC UA protocol.
+    /// </summary>
     public class PublishResponse
     {
+        /// <summary>
+        /// Gets the NodeId for the PublishResponse message type.
+        /// </summary>
         public static readonly NodeId NodeId = new(829);
 
+        /// <summary>
+        /// Gets or sets the <see cref="ResponseHeader"/> of the PublishResponse.
+        /// </summary>
         public ResponseHeader? ResponseHeader { get; set; }
+
+        /// <summary>
+        /// Gets or sets the subscription ID associated with the PublishResponse.
+        /// </summary>
         public uint SubscriptionId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the available sequence numbers for the PublishResponse.
+        /// </summary>
         public uint[]? AvailableSequenceNumbers { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether there are more notifications.
+        /// </summary>
         public bool MoreNotifications { get; set; }
+
+        /// <summary>
+        /// Gets or sets the <see cref="NotificationMessage"/> of the PublishResponse.
+        /// </summary>
         public NotificationMessage? NotificationMessage { get; set; }
+
+        /// <summary>
+        /// Gets or sets the results of the PublishResponse acknowledgments.
+        /// </summary>
         public StatusCode[]? Results { get; set; }
+
+        /// <summary>
+        /// Gets or sets the diagnostic information for the PublishResponse.
+        /// </summary>
         public DiagnosticInfo?[]? DiagnosticInfos { get; set; }
 
+        /// <summary>
+        /// Decodes the PublishResponse using the provided <see cref="OpcUaBinaryReader"/>.
+        /// </summary>
+        /// <param name="reader">The <see cref="OpcUaBinaryReader"/> to use for decoding.</param>
         public void Decode(OpcUaBinaryReader reader)
         {
             ResponseHeader = ResponseHeader.Decode(reader);
