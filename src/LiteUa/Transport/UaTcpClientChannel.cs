@@ -21,10 +21,9 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace LiteUa.Transport
 {
-    /// TODO: Add unit tests
-    /// TODO: fix documentation comments
-    /// TODO: Add ToString() method
-
+    /// <summary>
+    /// Represents a client channel for OPC UA communication over TCP.
+    /// </summary>
     public class UaTcpClientChannel : IUaTcpClientChannel, IDisposable, IAsyncDisposable
     {
         private TcpClient? _client;
@@ -68,6 +67,19 @@ namespace LiteUa.Transport
         public uint MaxMessageSize { get; private set; }
         public uint MaxChunkCount { get; private set; }
 
+        /// <summary>
+        /// Creates a new instance of the <see cref="UaTcpClientChannel"/> class.
+        /// </summary>
+        /// <param name="endpointUrl">The network address of the OPC UA server endpoint (e.g., "opc.tcp://localhost:4840").</param>
+        /// <param name="applicationUri">The globally unique identifier (URI) for the client application instance.</param>
+        /// <param name="productUri">The globally unique identifier (URI) for the client product.</param>
+        /// <param name="applicationName">A human-readable name for the client application.</param>
+        /// <param name="policyFactory">The factory responsible for creating the security policy and cryptographic providers.</param>
+        /// <param name="securityMode">The message security mode (None, Sign, or SignAndEncrypt) to apply to the channel.</param>
+        /// <param name="clientCertificate">The X.509 certificate of the client, used for signing and decryption.</param>
+        /// <param name="serverCertificate">The X.509 certificate of the server, used for encryption and signature verification.</param>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="endpointUrl"/>, <paramref name="applicationUri"/>, <paramref name="productUri"/>, <paramref name="applicationName"/>, or <paramref name="policyFactory"/> is null.</exception>
+        /// <exception cref="ArgumentException">Thrown if the string parameters are empty or consist only of white space.</exception>
         public UaTcpClientChannel(
             string endpointUrl,
             string applicationUri,

@@ -4,8 +4,23 @@ using System.Reflection;
 
 namespace LiteUa.Transport
 {
+    /// <summary>
+    /// Extension methods for IUaTcpClientChannel to support typed method calls.
+    /// </summary>
     public static class UaTcpClientChannelExtensions
     {
+        /// <summary>
+        /// Calls an OPC UA method using strongly-typed input and output objects, automatically mapping properties to method arguments.
+        /// </summary>
+        /// <typeparam name="TInput">The class type representing the input arguments of the method.</typeparam>
+        /// <typeparam name="TOutput">The class type representing the output arguments of the method. Must have a parameterless constructor.</typeparam>
+        /// <param name="channel">The <see cref="IUaTcpClientChannel"/> used to perform the call.</param>
+        /// <param name="objectId">The <see cref="NodeId"/> of the object that contains the method.</param>
+        /// <param name="methodId">The <see cref="NodeId"/> of the method to be invoked.</param>
+        /// <param name="input">An instance of <typeparamref name="TInput"/> containing the values to be passed as input arguments.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> to control the asynchronous operation.</param>
+        /// <returns>A <see cref="Task"/> resulting in an instance of <typeparamref name="TOutput"/> populated with the method's return values.</returns>
+        /// <exception cref="Exception">Thrown if the number of output variants returned by the server does not match the number of properties defined in <typeparamref name="TOutput"/>.</exception>
         public static async Task<TOutput> CallTypedAsync<TInput, TOutput>(
             this IUaTcpClientChannel channel, NodeId objectId, NodeId methodId, TInput input, CancellationToken cancellationToken = default)
             where TInput : class
