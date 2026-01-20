@@ -1,7 +1,8 @@
 ﻿namespace LiteUa.Stack.SecureChannel
 {
-    /// TODO: fix documentation comments
-
+    /// <summary>
+    /// Represents the security mode for messages in OPC UA.
+    /// </summary>
     public enum MessageSecurityMode : int
     {
         Invalid = 0,

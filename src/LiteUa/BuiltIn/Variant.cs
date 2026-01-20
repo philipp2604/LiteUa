@@ -2,8 +2,6 @@
 
 namespace LiteUa.BuiltIn
 {
-    /// TODO: Add unit tests
-
     /// <summary>
     ///  Represents a Variant in OPC UA, which can hold a value of any built-in type, including arrays and multi-dimensional arrays.
     /// </summary>

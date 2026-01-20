@@ -2,9 +2,6 @@
 
 namespace LiteUa.BuiltIn
 {
-    /// TODO: Add unit tests
-    /// TODI: Add ToString() method
-
     /// <summary>
     /// Represents a DataValue in OPC UA, which includes a value, status code, and timestamps.
     /// </summary>
@@ -30,6 +27,11 @@ namespace LiteUa.BuiltIn
         /// </summary>
         public DateTime ServerTimestamp { get; set; }
 
+        /// <summary>
+        /// Decodes a DataValue from the provided <see cref="OpcUaBinaryReader"/>.
+        /// </summary>
+        /// <param name="reader">The reader to use for decoding.</param>
+        /// <returns>A new DataValue instance.</returns>
         public static DataValue Decode(OpcUaBinaryReader reader)
         {
             var dv = new DataValue();
@@ -41,7 +43,8 @@ namespace LiteUa.BuiltIn
             // Bit 3: ServerTimestamp present
             // ... (PicoSeconds etc. )
 
-            ///TODO: PicoSeconds (Bits 4 and 5)
+            // PicoSeconds (Bits 4 and 5) not supported as DateTime does not support them
+            //TODO: Extra properties for picoseconds?
 
             byte mask = reader.ReadByte();
 
@@ -58,18 +61,28 @@ namespace LiteUa.BuiltIn
             return dv;
         }
 
+        /// <summary>
+        /// Encodes this DataValue using the provided <see cref="OpcUaBinaryWriter"/>.
+        /// </summary>
+        /// <param name="writer">The <see cref="OpcUaBinaryWriter"/> to use for encoding.</param>
         public void Encode(OpcUaBinaryWriter writer)
         {
             byte mask = 0;
             if (Value != null) mask |= 0x01;
-            if (StatusCode.Code != 0) mask |= 0x02;
-
+            //if (StatusCode.Code != 0) mask |= 0x02;
+            // Always include StatusCode
+            mask |= 0x02;
             if (SourceTimestamp != DateTime.MinValue) mask |= 0x04;
             writer.WriteByte(mask);
 
             Value?.Encode(writer);
             if ((mask & 0x02) != 0) StatusCode.Encode(writer);
             if ((mask & 0x04) != 0) writer.WriteDateTime(SourceTimestamp);
+        }
+
+        public override string ToString()
+        {
+            return $"Value={Value}, StatusCode={StatusCode}, SourceTimestamp={SourceTimestamp}, ServerTimestamp={ServerTimestamp}";
         }
     }
 }

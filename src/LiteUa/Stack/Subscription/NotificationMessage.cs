@@ -3,16 +3,31 @@ using LiteUa.Encoding;
 
 namespace LiteUa.Stack.Subscription
 {
-    /// TODO: Add unit tests
-    /// TODO: fix documentation comments
-    /// TODO: Add ToString() method
-
+    /// <summary>
+    /// Represents a NotificationMessage used in OPC UA subscriptions.
+    /// </summary>
     public class NotificationMessage
     {
+        /// <summary>
+        /// Gets or sets the sequence number of the notification message.
+        /// </summary>
         public uint SequenceNumber { get; set; }
+
+        /// <summary>
+        /// Gets or sets the publish time of the notification message.
+        /// </summary>
         public DateTime PublishTime { get; set; }
+
+        /// <summary>
+        /// Gets or sets the array of notification data as <see cref="ExtensionObject"/>.
+        /// </summary>
         public ExtensionObject[]? NotificationData { get; set; }
 
+        /// <summary>
+        /// Decodes a NotificationMessage using the provided <see cref="OpcUaBinaryReader"/>.
+        /// </summary>
+        /// <param name="reader">The <see cref="OpcUaBinaryReader"/> to use for decoding.</param>
+        /// <returns>The decoded <see cref="NotificationMessage"/> instance.</returns>
         public static NotificationMessage Decode(OpcUaBinaryReader reader)
         {
             var msg = new NotificationMessage

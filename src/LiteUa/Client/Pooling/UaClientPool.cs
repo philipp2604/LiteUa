@@ -7,6 +7,9 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace LiteUa.Client.Pooling
 {
+    /// <summary>
+    /// A pool for managing UaTcpClientChannel instances to efficiently reuse connections to an OPC UA server.
+    /// </summary>
     public class UaClientPool : IUaClientPool
     {
         private readonly string _endpointUrl;
@@ -19,12 +22,27 @@ namespace LiteUa.Client.Pooling
         private readonly X509Certificate2? _serverCert;
         private readonly MessageSecurityMode _securityMode;
         private readonly int _maxSize;
+        private readonly IUaTcpClientChannelFactory _tcpClientChannelFactory;
 
         // Idle clients
-        private readonly ConcurrentBag<UaTcpClientChannel> _clients;
+        private readonly ConcurrentBag<IUaTcpClientChannel> _clients;
 
         private readonly SemaphoreSlim _semaphore;
 
+        /// <summary>
+        /// Creates a new instance of the <see cref="UaClientPool"/> class.
+        /// </summary>
+        /// <param name="endpointUrl">The server's endpoint url including protocol and port, e.g. 'opc.tcp://192.178.0.1:4840/'.</param>
+        /// <param name="applicationUri">The application uri.</param>
+        /// <param name="productUri">The product uri.</param>
+        /// <param name="applicationName">The application name.</param>
+        /// <param name="userIdentity">The user identity of type <see cref="IUserIdentity"/> to use.</param>
+        /// <param name="securityPolicyFactory">An instance of <see cref="ISecurityPolicy"/>.</param>
+        /// <param name="securityMode">The message security mode to use.</param>
+        /// <param name="clientCert">Optional: The client's certificate.</param>
+        /// <param name="serverCert">Optional: The server's certificate.</param>
+        /// <param name="maxSize">The max. pool size.</param>
+        /// <param name="tcpClientChannelFactory">An instance of <see cref="IUaTcpClientChannelFactory"/>.</param>
         public UaClientPool(
             string endpointUrl,
             string applicationUri,
@@ -35,7 +53,8 @@ namespace LiteUa.Client.Pooling
             MessageSecurityMode securityMode,
             X509Certificate2? clientCert,
             X509Certificate2? serverCert,
-            int maxSize)
+            int maxSize,
+            IUaTcpClientChannelFactory tcpClientChannelFactory)
         {
             ArgumentNullException.ThrowIfNullOrWhiteSpace(endpointUrl);
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationUri);
@@ -43,6 +62,7 @@ namespace LiteUa.Client.Pooling
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationName);
             ArgumentNullException.ThrowIfNull(userIdentity);
             ArgumentNullException.ThrowIfNull(securityPolicyFactory);
+            ArgumentNullException.ThrowIfNull(tcpClientChannelFactory);
 
             _endpointUrl = endpointUrl;
             _applicationUri = applicationUri;
@@ -56,6 +76,7 @@ namespace LiteUa.Client.Pooling
             _maxSize = maxSize;
             _clients = [];
             _semaphore = new(maxSize, maxSize);
+            _tcpClientChannelFactory = tcpClientChannelFactory;
         }
 
         public async Task<PooledUaClient> RentAsync()
@@ -64,7 +85,7 @@ namespace LiteUa.Client.Pooling
             await _semaphore.WaitAsync();
 
             // Try to get an existing client
-            if (_clients.TryTake(out UaTcpClientChannel? client))
+            if (_clients.TryTake(out IUaTcpClientChannel? client))
             {
                 /// TODO: Quick "IsConnected" check here, e.g. a read on ServerStatus node.
                 /// If broken -> Dispose and create a new one.
@@ -84,7 +105,7 @@ namespace LiteUa.Client.Pooling
             }
         }
 
-        internal void Return(PooledUaClient pooledClient)
+        public void Return(PooledUaClient pooledClient)
         {
             if (pooledClient.IsInvalid)
             {
@@ -100,15 +121,14 @@ namespace LiteUa.Client.Pooling
             }
         }
 
-        private async Task<UaTcpClientChannel> CreateNewClientAsync()
+        private async Task<IUaTcpClientChannel> CreateNewClientAsync()
         {
-            /// TODO: general connection logic via configurable Security Policies, Message Security Modes, etc.
-            var client = new UaTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert);
+            var client = _tcpClientChannelFactory.CreateTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert);
 
             try
             {
                 await client.ConnectAsync();
-                await client.CreateSessionAsync("PoolSession");
+                await client.CreateSessionAsync(_applicationName + " - PoolSession");
                 await client.ActivateSessionAsync(_userIdentity);
                 return client;
             }

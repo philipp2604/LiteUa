@@ -2,9 +2,6 @@
 
 namespace LiteUa.BuiltIn
 {
-    /// TODO: Add unit tests
-    /// TODI: Add ToString() method
-
     /// <summary>
     /// Represents an ExtensionObject in OPC UA, which can encapsulate complex data types.
     /// </summary>
@@ -153,6 +150,11 @@ namespace LiteUa.BuiltIn
             }
 
             return result;
+        }
+
+        public override string ToString()
+        {
+            return $"TypeId={TypeId}, Encoding=0x{Encoding:X2}, BodyLength={(Body != null ? Body.Length : 0)}, DecodedValueType={(DecodedValue != null ? DecodedValue.GetType().ToString() : "null")}";
         }
     }
 }

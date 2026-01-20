@@ -1,7 +1,8 @@
 ﻿namespace LiteUa.Stack.SecureChannel
 {
-    /// TODO: fix documentation comments
-
+    /// <summary>
+    /// Represents the type of security token request in OPC UA.
+    /// </summary>
     public enum SecurityTokenRequestType : int
     {
         Issue = 0,

@@ -2,8 +2,6 @@
 
 namespace LiteUa.BuiltIn
 {
-    /// TODO: Add unit tests
-
     /// <summary>
     /// Represents a LocalizedText in OPC UA, which includes an optional Locale and Text.
     /// </summary>
@@ -51,10 +49,7 @@ namespace LiteUa.BuiltIn
             if (Text != null) writer.WriteString(Text);
         }
 
-        public override string ToString()
-        {
-            return base.ToString() ?? string.Empty;
-        }
+        public override string ToString() => Text ?? string.Empty;
 
         public static implicit operator string(LocalizedText lt) => lt?.Text ?? string.Empty;
 

@@ -4,12 +4,15 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace LiteUa.Stack.Session.Identity
 {
-    /// TODO: Add unit tests
-    /// TODO: fix documentation comments
-    /// TODO: Add ToString() method
-
+    /// <summary>
+    /// Represents an anonymous user identity token.
+    /// </summary>
+    /// <param name="policyId">The policy id string.</param>
     public class AnonymousIdentityToken(string policyId = "Anonymous") : IUserIdentity
     {
+        /// <summary>
+        /// Gets or sets the policy id of the anonymous identity token.
+        /// </summary>
         public string PolicyId { get; set; } = policyId;
 
         public ExtensionObject ToExtensionObject(X509Certificate2? serverCertificate, byte[]? serverNonce)

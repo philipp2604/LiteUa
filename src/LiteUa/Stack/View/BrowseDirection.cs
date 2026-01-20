@@ -1,9 +1,8 @@
 ﻿namespace LiteUa.Stack.View
 {
-    /// TODO: Add unit tests
-    /// TODO: fix documentation comments
-    /// TODO: Add ToString() method
-
+    /// <summary>
+    /// Defines the direction in which to browse items.
+    /// </summary>
     public enum BrowseDirection : int
     {
         Forward = 0,

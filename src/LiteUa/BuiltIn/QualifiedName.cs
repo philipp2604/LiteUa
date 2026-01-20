@@ -2,8 +2,6 @@
 
 namespace LiteUa.BuiltIn
 {
-    /// TODO: Add unit tests
-
     /// <summary>
     /// Represents a QualifiedName in OPC UA, consisting of a NamespaceIndex and a Name.
     /// </summary>

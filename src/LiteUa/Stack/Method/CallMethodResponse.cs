@@ -3,19 +3,41 @@ using LiteUa.Encoding;
 
 namespace LiteUa.Stack.Method
 {
-    /// TODO: Add unit tests
-    /// TODO: fix documentation comments
-    /// TODO: Add ToString() method
-
+    /// <summary>
+    /// Represents a CallMethodResponse message in OPC UA.
+    /// </summary>
     public class CallMethodResponse
     {
+        /// <summary>
+        /// Gets the NodeId for CallMethodResponse.
+        /// </summary>
         public static readonly NodeId NodeId = new(709);
 
+        /// <summary>
+        /// Gets or sets the status code of the method call.
+        /// </summary>
         public StatusCode StatusCode { get; set; }
+
+        /// <summary>
+        /// Gets or sets the array of status codes for each input argument.
+        /// </summary>
         public StatusCode[]? InputArgumentResults { get; set; }
+
+        /// <summary>
+        /// Gets or sets the array of diagnostic information for each input argument.
+        /// </summary>
         public DiagnosticInfo?[]? InputArgumentDiagnosticInfos { get; set; }
+
+        /// <summary>
+        /// Gets or sets the array of output arguments returned by the method call.
+        /// </summary>
         public Variant[]? OutputArguments { get; set; }
 
+        /// <summary>
+        /// Decodes a CallMethodResponse using the provided <see cref="OpcUaBinaryReader"/>.
+        /// </summary>
+        /// <param name="reader">The <see cref="OpcUaBinaryReader"/> to use for encoding.</param>
+        /// <returns>The decoded <see cref="CallMethodResponse"/> instance.</returns>
         public static CallMethodResponse Decode(OpcUaBinaryReader reader)
         {
             var res = new CallMethodResponse

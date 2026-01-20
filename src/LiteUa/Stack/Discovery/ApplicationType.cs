@@ -1,7 +1,8 @@
 ﻿namespace LiteUa.Stack.Discovery
 {
-    /// TODO: fix documentation comments
-
+    /// <summary>
+    /// Represents the type of an application in OPC UA.
+    /// </summary>
     public enum ApplicationType : int
     {
         Server = 0,

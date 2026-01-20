@@ -2,8 +2,6 @@
 
 namespace LiteUa.BuiltIn
 {
-    /// TODO: Add unit tests
-
     /// <summary>
     /// Represents an ExpandedNodeId in OPC UA, which includes a NodeId, an optional NamespaceUri, and a ServerIndex.
     /// </summary>
@@ -60,11 +58,103 @@ namespace LiteUa.BuiltIn
         /// </summary>
         /// <param name="writer">The <see cref="OpcUaBinaryWriter"/> to use for encoding.</param>
         /// <exception cref="NotImplementedException"></exception>
+        /// <summary>
         public void Encode(OpcUaBinaryWriter writer)
         {
-            ///TODO: Implement encoding.
+            if (NodeId == null)
+            {
+                throw new InvalidOperationException("NodeId cannot be null.");
+            }
 
-            throw new NotImplementedException();
+            byte encodingByte;
+
+            // set encoding byte
+            if (NodeId.StringIdentifier != null)
+            {
+                encodingByte = 0x03; // String
+            }
+            else if (NodeId.GuidIdentifier.HasValue)
+            {
+                encodingByte = 0x04; // Guid
+            }
+            else if (NodeId.ByteStringIdentifier != null)
+            {
+                encodingByte = 0x05; // ByteString
+            }
+            else if (NodeId.NumericIdentifier.HasValue)
+            {
+                if (NodeId.NamespaceIndex == 0 && NodeId.NumericIdentifier <= 255)
+                {
+                    encodingByte = 0x00; // TwoByte
+                }
+                else if (NodeId.NamespaceIndex <= 255 && NodeId.NumericIdentifier <= 65535)
+                {
+                    encodingByte = 0x01; // FourByte
+                }
+                else
+                {
+                    encodingByte = 0x02; // Numeric
+                }
+            }
+            else
+            {
+                throw new NotSupportedException("The NodeId contains no valid identifier.");
+            }
+
+            // 2. add flags
+            bool hasNamespaceUri = !string.IsNullOrEmpty(NamespaceUri);
+            bool hasServerIndex = ServerIndex != 0;
+
+            if (hasNamespaceUri) encodingByte |= 0x80;
+            if (hasServerIndex) encodingByte |= 0x40;
+
+            // 3. write encoding byte
+            writer.WriteByte(encodingByte);
+
+            // 4. write node id
+            int type = encodingByte & 0x0F;
+            switch (type)
+            {
+                case 0: // TwoByte
+                    writer.WriteByte((byte)NodeId.NumericIdentifier!.Value);
+                    break;
+
+                case 1: // FourByte
+                    writer.WriteByte((byte)NodeId.NamespaceIndex);
+                    writer.WriteUInt16((ushort)NodeId.NumericIdentifier!.Value);
+                    break;
+
+                case 2: // Numeric
+                    writer.WriteUInt16(NodeId.NamespaceIndex);
+                    writer.WriteUInt32(NodeId.NumericIdentifier!.Value);
+                    break;
+
+                case 3: // String
+                    writer.WriteUInt16(NodeId.NamespaceIndex);
+                    writer.WriteString(NodeId.StringIdentifier);
+                    break;
+
+                case 4: // Guid
+                    writer.WriteUInt16(NodeId.NamespaceIndex);
+                    writer.WriteGuid(NodeId.GuidIdentifier!.Value);
+                    break;
+
+                case 5: // ByteString
+                    writer.WriteUInt16(NodeId.NamespaceIndex);
+                    writer.WriteByteString(NodeId.ByteStringIdentifier);
+                    break;
+            }
+
+            // 5. write optional fields
+            if (hasNamespaceUri)
+            {
+                writer.WriteString(NamespaceUri);
+            }
+
+            if (hasServerIndex)
+            {
+                writer.WriteUInt32(ServerIndex);
+            }
         }
 
         public override string ToString() => NodeId?.ToString() ?? string.Empty;

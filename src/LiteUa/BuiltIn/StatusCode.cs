@@ -2,15 +2,13 @@
 
 namespace LiteUa.BuiltIn
 {
-    /// TODO: Add unit tests
-
     /// <summary>
     /// Represents a StatusCode in OPC UA, indicating the result of an operation.
     /// </summary>
     /// <remarks>
     /// Creates a new instance of StatusCode with the specified code.
     /// </remarks>
-    /// <param name="code"></param>
+    /// <param name="code">The numeric status code as <see cref="uint"/></param>
     public struct StatusCode(uint code)
     {
         /// <summary>
@@ -41,7 +39,7 @@ namespace LiteUa.BuiltIn
         /// <summary>
         /// Encodes a StatusCode using the provided <see cref="OpcUaBinaryWriter">.
         /// </summary>
-        /// <param name="writer">The <see cref="OpcUaBinaryWriter"/> to use for decoding.</param>
+        /// <param name="writer">The <see cref="OpcUaBinaryWriter"/> to use for encoding.</param>
         public readonly void Encode(OpcUaBinaryWriter writer)
         {
             writer.WriteUInt32(Code);

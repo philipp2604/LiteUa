@@ -2,8 +2,19 @@
 
 namespace LiteUa.Stack.View
 {
+    /// <summary>
+    /// A static parser for converting string representations of browse paths into <see cref="RelativePath"/> objects.
+    /// </summary>
     public static class BrowsePathParser
     {
+        /// <summary>
+        /// Parses a string representation of a relative path into a corresponding <see cref="RelativePath"/> instance.
+        /// </summary>
+        /// <param name="path">The relative path string to parse. Each element should be separated by a forward slash ('/'). Elements may
+        /// optionally specify a namespace index using the format "nsIndex:Name"; if omitted, the namespace index
+        /// defaults to 0.</param>
+        /// <returns>A <see cref="RelativePath"/> instance representing the parsed path elements. The returned object contains
+        /// one element for each valid segment in the input string.</returns>
         public static RelativePath Parse(string path)
         {
             var parts = path.Split('/');
