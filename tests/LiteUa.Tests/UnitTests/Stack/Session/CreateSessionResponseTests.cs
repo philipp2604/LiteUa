@@ -7,6 +7,7 @@ using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Session
 {
+    [Trait("Category", "Unit")]
     public class CreateSessionResponseTests
     {
         private readonly Mock<OpcUaBinaryReader> _readerMock;

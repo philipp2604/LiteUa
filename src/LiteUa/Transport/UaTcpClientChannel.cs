@@ -27,7 +27,7 @@ namespace LiteUa.Transport
     public class UaTcpClientChannel : IUaTcpClientChannel, IDisposable, IAsyncDisposable
     {
         private TcpClient? _client;
-        private NetworkStream? _stream;
+        private Stream? _stream;
         private readonly string _endpointUrl;
         private readonly string _applicationUri;
         private readonly string _productUri;
@@ -303,50 +303,46 @@ namespace LiteUa.Transport
 
         public async Task DisconnectAsync()
         {
-            _renewCts?.Cancel();
-
-            // close session if exists
-            if (_authenticationToken.NumericIdentifier != 0)
+            try
             {
-                try
+                if (_renewCts != null && !_renewCts.IsCancellationRequested)
                 {
-                    if (_stream != null)
-                    {
-                        var req = new CloseSessionRequest
-                        {
-                            RequestHeader = CreateRequestHeader(),
-                            DeleteSubscriptions = true
-                        };
-                        await SendRequestAsync<CloseSessionRequest, CloseSessionResponse>(req);
-                    }
-                }
-                catch (Exception)
-                {
-                    throw;
+                    _renewCts.Cancel();
                 }
             }
+            catch (ObjectDisposedException) { }
 
-            // close secure channel if exists
-            if (SecureChannelId != 0)
+            var stream = _stream;
+            var client = _client;
+
+            // 2. Close session
+            if (_authenticationToken.NumericIdentifier != 0 && stream != null)
             {
                 try
                 {
-                    var req = new CloseSecureChannelRequest
-                    {
-                        RequestHeader = CreateRequestHeader()
-                    };
+                    var req = new CloseSessionRequest { RequestHeader = CreateRequestHeader(), DeleteSubscriptions = true };
+                    await SendRequestAsync<CloseSessionRequest, CloseSessionResponse>(req);
+                }
+                catch { /* Ignore network errors during shutdown */ }
+            }
+
+            // 3. Close channel
+            if (SecureChannelId != 0 && stream != null)
+            {
+                try
+                {
+                    var req = new CloseSecureChannelRequest { RequestHeader = CreateRequestHeader() };
                     await SendRequestAsync<CloseSecureChannelRequest, CloseSecureChannelResponse>(req);
                 }
-                catch (Exception)
-                {
-                }
+                catch { /* Ignore network errors during shutdown */ }
             }
-
-            // close socket
-            _stream?.Dispose();
-            _client?.Dispose();
             _stream = null;
             _client = null;
+            SecureChannelId = 0;
+            _authenticationToken = new NodeId(0);
+
+            stream?.Dispose();
+            client?.Dispose();
         }
 
         public RequestHeader CreateRequestHeader()
@@ -368,9 +364,7 @@ namespace LiteUa.Transport
             /// TODO: throw if port invalid
             int port = uri.Port == -1 ? 4840 : uri.Port;
 
-            _client = new TcpClient();
-            await _client.ConnectAsync(uri.Host, port);
-            _stream = _client.GetStream();
+            _stream = await CreateStreamAsync(uri.Host, port, cancellationToken);
 
             // 1. Hello / Acknowledge
             await PerformHandshakeAsync(uri.AbsoluteUri, cancellationToken);
@@ -1490,7 +1484,7 @@ namespace LiteUa.Transport
             return await SendRequestAsync<GetEndpointsRequest, GetEndpointsResponse>(req, cancellationToken);
         }
 
-        private static async Task<int> ReadExactAsync(NetworkStream stream, byte[] buffer, int count, CancellationToken cancellationToken)
+        private static async Task<int> ReadExactAsync(Stream stream, byte[] buffer, int count, CancellationToken cancellationToken)
         {
             int totalRead = 0;
             while (totalRead < count)
@@ -1599,9 +1593,22 @@ namespace LiteUa.Transport
             }
         }
 
+        protected virtual async Task<Stream> CreateStreamAsync(string host, int port, CancellationToken ct)
+        {
+            _client = new TcpClient();
+            await _client.ConnectAsync(host, port, ct);
+            return _client.GetStream();
+        }
+
         public async ValueTask DisposeAsync()
         {
             await DisconnectAsync();
+
+            var cts = _renewCts;
+            _renewCts = null;
+            cts?.Dispose();
+
+            _lock.Dispose();
             GC.SuppressFinalize(this);
         }
 
@@ -1609,13 +1616,17 @@ namespace LiteUa.Transport
         {
             try
             {
-                DisconnectAsync().Wait(2000);
+                DisconnectAsync().GetAwaiter().GetResult();
             }
             catch { }
 
+            var cts = _renewCts;
+            _renewCts = null;
+            cts?.Dispose();
+
             _stream?.Dispose();
             _client?.Dispose();
-            _renewCts?.Cancel();
+            _lock.Dispose();
             GC.SuppressFinalize(this);
         }
     }

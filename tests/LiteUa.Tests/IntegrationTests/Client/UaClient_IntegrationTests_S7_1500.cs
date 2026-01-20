@@ -17,7 +17,7 @@ using Xunit.Abstractions;
 namespace LiteUa.Tests.IntegrationTests.Client
 {
     [Trait("Category", "Integration")]
-    [Trait("Category", "S7-1200")]
+    [Trait("Category", "S7-1500")]
     public class UaClient_IntegrationTests_S7_1500
     {
         private readonly ITestOutputHelper _output;
