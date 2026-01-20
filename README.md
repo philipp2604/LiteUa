@@ -2,7 +2,11 @@
 
 [![Language](https://img.shields.io/badge/language-C%23-blue.svg)](https://docs.microsoft.com/en-us/dotnet/csharp/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![.NET 9 Build & Test](https://github.com/philipp2604/LiteUa/actions/workflows/dotnet-9-build-and-test.yml/badge.svg)](https://github.com/philipp2604/LiteUa/actions/workflows/dotnet-9-build-and-test.yml)
+[![.NET 10 (Latest) Build & Test](https://github.com/philipp2604/LiteUa/actions/workflows/dotnet-10-build-and-test.yml/badge.svg)](https://github.com/philipp2604/LiteUa/actions/workflows/dotnet-10-build-and-test.yml) 
 [![GitHub issues](https://img.shields.io/github/issues/philipp2604/LiteUa)](https://github.com/philipp2604/LiteUa/issues)  
+[![NuGet Version](https://img.shields.io/nuget/v/philipp2604.LiteUa.svg?style=flat-square&logo=nuget)](https://www.nuget.org/packages/philipp2604.LiteUa/)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/philipp2604/LiteUa)
 
 **LiteUa** is a native, lightweight, and dependency-free OPC UA Client Library written entirely in C# from scratch.
 
