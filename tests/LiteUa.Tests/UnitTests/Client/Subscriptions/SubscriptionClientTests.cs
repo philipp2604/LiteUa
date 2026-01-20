@@ -210,7 +210,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
             // Arrange
             var sut = CreateSut();
             sut.Start();
-            await Task.Delay(50);
+            await Task.Delay(500);
 
             // Act
             await sut.DisposeAsync();

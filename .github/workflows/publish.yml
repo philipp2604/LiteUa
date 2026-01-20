@@ -71,11 +71,11 @@ jobs:
     - name: Build
       run: dotnet build --configuration Release #--no-restore # --framework 'net8.0'
     
-    - name: Test .NET 8
-      run: dotnet test --configuration Release --no-restore --no-build --verbosity normal --framework 'net9.0' --filter "Category!=Integration"
-    
     - name: Test .NET 9
-      run: dotnet test --configuration Release --no-restore --no-build --verbosity normal --framework 'net10.0' --filter "Category!=Integration"
+      run: dotnet test --configuration Release --no-restore --no-build --verbosity normal --framework 'net9.0' --filter "Category==Unit"
+    
+    - name: Test .NET 10
+      run: dotnet test --configuration Release --no-restore --no-build --verbosity normal --framework 'net10.0' --filter "Category==Unit"
 
   deploy:
     runs-on: windows-latest
