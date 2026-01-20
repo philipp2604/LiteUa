@@ -53,8 +53,8 @@ namespace LiteUa.Tests.UnitTests.Client.Pooling
 
             // Verify initialization sequence
             _channelMock.Verify(c => c.ConnectAsync(default), Times.Once);
-            _channelMock.Verify(c => c.CreateSessionAsync(It.IsAny<string>()), Times.Once);
-            _channelMock.Verify(c => c.ActivateSessionAsync(_userMock.Object), Times.Once);
+            _channelMock.Verify(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+            _channelMock.Verify(c => c.ActivateSessionAsync(_userMock.Object, It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]

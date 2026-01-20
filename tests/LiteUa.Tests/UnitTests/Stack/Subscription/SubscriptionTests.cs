@@ -36,10 +36,10 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
                 RevisedMaxKeepAliveCount = 10
             };
 
-            _channelMock.Setup(c => c.SendRequestAsync<CreateSubscriptionRequest, CreateSubscriptionResponse>(It.IsAny<CreateSubscriptionRequest>()))
+            _channelMock.Setup(c => c.SendRequestAsync<CreateSubscriptionRequest, CreateSubscriptionResponse>(It.IsAny<CreateSubscriptionRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(response);
 
-            _channelMock.Setup(c => c.SendRequestAsync<PublishRequest, PublishResponse>(It.IsAny<PublishRequest>()))
+            _channelMock.Setup(c => c.SendRequestAsync<PublishRequest, PublishResponse>(It.IsAny<PublishRequest>(), It.IsAny<CancellationToken>()))
                 .Returns(() => new TaskCompletionSource<PublishResponse>().Task);
 
             // Act
@@ -47,11 +47,11 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
 
             // Assert
             _channelMock.Verify(c => c.SendRequestAsync<CreateSubscriptionRequest, CreateSubscriptionResponse>(
-                It.Is<CreateSubscriptionRequest>(r => r.RequestedPublishingInterval == 1000.0)), Times.Once);
+                It.Is<CreateSubscriptionRequest>(r => r.RequestedPublishingInterval == 1000.0), It.IsAny<CancellationToken>()), Times.Once);
 
             // Verify background loop started
             await Task.Delay(100);
-            _channelMock.Verify(c => c.SendRequestAsync<PublishRequest, PublishResponse>(It.IsAny<PublishRequest>()), Times.AtLeastOnce);
+            _channelMock.Verify(c => c.SendRequestAsync<PublishRequest, PublishResponse>(It.IsAny<PublishRequest>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
         }
 
         [Fact]
@@ -78,7 +78,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
             ]
             };
 
-            _channelMock.Setup(c => c.SendRequestAsync<CreateMonitoredItemsRequest, CreateMonitoredItemsResponse>(It.IsAny<CreateMonitoredItemsRequest>()))
+            _channelMock.Setup(c => c.SendRequestAsync<CreateMonitoredItemsRequest, CreateMonitoredItemsResponse>(It.IsAny<CreateMonitoredItemsRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(response);
 
             // Act
@@ -96,7 +96,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
             // Arrange
             var tcs = new TaskCompletionSource<(uint, DataValue)>();
             _sut.DataChanged += (h, v) => tcs.TrySetResult((h, v));
-            _channelMock.Setup(c => c.SendRequestAsync<CreateSubscriptionRequest, CreateSubscriptionResponse>(It.IsAny<CreateSubscriptionRequest>()))
+            _channelMock.Setup(c => c.SendRequestAsync<CreateSubscriptionRequest, CreateSubscriptionResponse>(It.IsAny<CreateSubscriptionRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new CreateSubscriptionResponse { SubscriptionId = 1, RevisedPublishingInterval = 100, RevisedMaxKeepAliveCount = 1 });
             var dataChangeBody = CreateDataChangeNotificationBytes(42u, 100.5);
 
@@ -113,7 +113,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
                 }
             };
 
-            _channelMock.SetupSequence(c => c.SendRequestAsync<PublishRequest, PublishResponse>(It.IsAny<PublishRequest>()))
+            _channelMock.SetupSequence(c => c.SendRequestAsync<PublishRequest, PublishResponse>(It.IsAny<PublishRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(pubResponse)
                 .Returns(() => new TaskCompletionSource<PublishResponse>().Task);
 
@@ -133,7 +133,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
             var tcs = new TaskCompletionSource<Exception>();
             _sut.ConnectionLost += (ex) => tcs.TrySetResult(ex);
 
-            _channelMock.Setup(c => c.SendRequestAsync<CreateSubscriptionRequest, CreateSubscriptionResponse>(It.IsAny<CreateSubscriptionRequest>()))
+            _channelMock.Setup(c => c.SendRequestAsync<CreateSubscriptionRequest, CreateSubscriptionResponse>(It.IsAny<CreateSubscriptionRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new CreateSubscriptionResponse { SubscriptionId = 1 });
 
             var statusChangeBody = CreateStatusChangeNotificationBytes(0x80000000u); // Bad
@@ -149,7 +149,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
                 }
             };
 
-            _channelMock.Setup(c => c.SendRequestAsync<PublishRequest, PublishResponse>(It.IsAny<PublishRequest>()))
+            _channelMock.Setup(c => c.SendRequestAsync<PublishRequest, PublishResponse>(It.IsAny<PublishRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(pubResponse);
 
             // Act
@@ -164,10 +164,10 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
         public async Task DeleteAsync_StopsLoop_AndSendsRequest()
         {
             // Arrange
-            _channelMock.Setup(c => c.SendRequestAsync<CreateSubscriptionRequest, CreateSubscriptionResponse>(It.IsAny<CreateSubscriptionRequest>()))
+            _channelMock.Setup(c => c.SendRequestAsync<CreateSubscriptionRequest, CreateSubscriptionResponse>(It.IsAny<CreateSubscriptionRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new CreateSubscriptionResponse { SubscriptionId = 500 });
 
-            _channelMock.Setup(c => c.SendRequestAsync<PublishRequest, PublishResponse>(It.IsAny<PublishRequest>()))
+            _channelMock.Setup(c => c.SendRequestAsync<PublishRequest, PublishResponse>(It.IsAny<PublishRequest>(), It.IsAny<CancellationToken>()))
                 .Returns(() => new TaskCompletionSource<PublishResponse>().Task);
 
             await _sut.CreateAsync();
@@ -176,7 +176,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
             await _sut.DeleteAsync();
 
             // Assert
-            _channelMock.Verify(c => c.DeleteSubscriptionsAsync(It.Is<uint[]>(ids => ids[0] == 500)), Times.Once);
+            _channelMock.Verify(c => c.DeleteSubscriptionsAsync(It.Is<uint[]>(ids => ids[0] == 500), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         private static byte[] CreateDataChangeNotificationBytes(uint handle, double value)

@@ -48,7 +48,7 @@ namespace LiteUa.Tests.UnitTests.Client
             _innerFactoryMock.Setup(f => f.CreateDiscoveryClient(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IUaTcpClientChannelFactory>()))
                 .Returns(_discoveryMock.Object);
 
-            _innerFactoryMock.Setup(f => f.CreateSubscriptionClient(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IUserIdentity>(), It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(), It.IsAny<System.Security.Cryptography.X509Certificates.X509Certificate2>(), It.IsAny<System.Security.Cryptography.X509Certificates.X509Certificate2>(), It.IsAny<IUaTcpClientChannelFactory>()))
+            _innerFactoryMock.Setup(f => f.CreateSubscriptionClient(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IUserIdentity>(), It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(), It.IsAny<System.Security.Cryptography.X509Certificates.X509Certificate2>(), It.IsAny<System.Security.Cryptography.X509Certificates.X509Certificate2>(), It.IsAny<IUaTcpClientChannelFactory>(), It.IsAny<int>(), It.IsAny<int>()))
                 .Returns(_subClientMock.Object);
 
             _innerFactoryMock.Setup(f => f.CreateUaClientPool(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IUserIdentity>(), It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(), It.IsAny<System.Security.Cryptography.X509Certificates.X509Certificate2>(), It.IsAny<System.Security.Cryptography.X509Certificates.X509Certificate2>(), It.IsAny<int>(), It.IsAny<IUaTcpClientChannelFactory>()))
