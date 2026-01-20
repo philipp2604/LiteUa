@@ -1,10 +1,10 @@
-﻿# LiteUa 🔗
+﻿﻿# LiteUa 🔗
 
 [![Language](https://img.shields.io/badge/language-C%23-blue.svg)](https://docs.microsoft.com/en-us/dotnet/csharp/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![GitHub issues](https://img.shields.io/github/issues/philipp2604/LiteUa)](https://github.com/philipp2604/LiteUa/issues)  
 
-**LiteUa** is a native, lightweight, and low-dependency OPC UA Client Library written entirely in C# from scratch.
+**LiteUa** is a native, lightweight, and dependency-free OPC UA Client Library written entirely in C# from scratch.
 
 Unlike other libraries that wrap the official OPC Foundation .NET Stack (which imposes GPL licensing constraints) or commercial SDKs, LiteUa implements the OPC UA binary protocol directly on top of TCP. This makes it extremely fast, lean, and permissive-license friendly.
 
@@ -14,7 +14,7 @@ Unlike other libraries that wrap the official OPC Foundation .NET Stack (which i
 
 ## 🚀 Why LiteUa?
 
-- **One 3rd Party Dependencies**: The core library is built directly on `System.Net.Sockets` and `System.Buffers`. No dependency on the official OPC Foundation Stack. No GPL viral licensing issues. The only used 3rd Party Dependency is Microsoft.SourceLink.Github (MIT License)
+- **Zero 3rd Party Dependencies**: The core library is built directly on `System.Net.Sockets` and `System.Buffers`. No dependency on the official OPC Foundation Stack. No GPL viral licensing issues.
 - **Pure C#**: Fully managed code without native wrappers.
 - **High Performance**: Features a built-in `ConnectionPool` for request-heavy scenarios.
 - **Resilient**: Includes a `SubscriptionClient` with automatic reconnection and self-healing capabilities.
@@ -22,10 +22,10 @@ Unlike other libraries that wrap the official OPC Foundation .NET Stack (which i
 
 ### 📦 Dependencies & Licenses
 
-While the **LiteUa** core library is low-dependency to ensure ease of licensing, the **Test Projects** utilize external packages (e.g., xUnit, Microsoft.NET.Test.Sdk) to ensure code quality and protocol correctness.
+While the **LiteUa** core library is strictly dependency-free to ensure ease of licensing, the **Test Projects** utilize external packages (e.g., xUnit, Microsoft.NET.Test.Sdk) to ensure code quality and protocol correctness.
 
 For a full list of dependencies used in the test environment, please refer to:
-📄 **[THIRD-PARTY-PACKAGES.md](./tests/LiteUa.Tests/THIRD-PARTY-PACKAGES.md)**
+📄 **[THIRD-PARTY-PACKAGES.md](https://github.com/philipp2604/LiteUa/blob/master/README.md)**
 
 ## ✨ Implemented Features
 
@@ -71,7 +71,7 @@ The library is split into logical layers:
 
 ## 🤝 Contributing
 
-Contributions are welcome! Since this is a "from scratch" implementation, please ensure any PRs maintain the almost zero-dependency philosophy for the main library.
+Contributions are welcome! Since this is a "from scratch" implementation, please ensure any PRs maintain the zero-dependency philosophy for the main library.
 
 ## ⚖️ License
 

@@ -1,4 +1,4 @@
-﻿# LiteUa 🔗
+﻿﻿# LiteUa 🔗
 
 [![Language](https://img.shields.io/badge/language-C%23-blue.svg)](https://docs.microsoft.com/en-us/dotnet/csharp/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -25,7 +25,7 @@ Unlike other libraries that wrap the official OPC Foundation .NET Stack (which i
 While the **LiteUa** core library is strictly dependency-free to ensure ease of licensing, the **Test Projects** utilize external packages (e.g., xUnit, Microsoft.NET.Test.Sdk) to ensure code quality and protocol correctness.
 
 For a full list of dependencies used in the test environment, please refer to:
-📄 **[THIRD-PARTY-PACKAGES.md](./tests/LiteUa.Tests/THIRD-PARTY-PACKAGES.md)**
+📄 **[THIRD-PARTY-PACKAGES.md](https://github.com/philipp2604/LiteUa/blob/master/README.md)**
 
 ## ✨ Implemented Features
 
@@ -75,7 +75,7 @@ Contributions are welcome! Since this is a "from scratch" implementation, please
 
 ## ⚖️ License
 
-This project is licensed under the **Apache License 2.0**. See the [LICENSE](./LICENSE.txt) file for details.
+This project is licensed under the **Apache License 2.0**. See the [LICENSE](https://github.com/philipp2604/LiteUa/blob/master/LICENSE.txt) file for details.
 
 You are free to use, modify, and distribute this software in **commercial** and **private** applications.
 
