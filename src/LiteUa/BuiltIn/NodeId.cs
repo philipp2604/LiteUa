@@ -285,5 +285,115 @@ namespace LiteUa.BuiltIn
 
             return sb.ToString();
         }
+
+        /// <summary>
+        /// Parses an OPC UA NodeId string (e.g., "ns=2;i=1234", "s=MyNode", "nsu=http://uri.com;g=00000000-0000-0000-0000-000000000000").
+        /// </summary>
+        /// <param name="input">The string representation of the NodeId.</param>
+        /// <returns>A new NodeId instance.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when input is null.</exception>
+        /// <exception cref="FormatException">Thrown when the string format is invalid.</exception>
+        public static NodeId Parse(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+                throw new ArgumentNullException(nameof(input));
+
+            if (!TryParse(input, out var result))
+                throw new FormatException($"The string '{input}' is not a valid NodeId.");
+
+            return result!;
+        }
+
+        /// <summary>
+        /// Attempts to parse an OPC UA NodeId string.
+        /// </summary>
+        /// <param name="input">The string representation of the NodeId.</param>
+        /// <param name="nodeId">The resulting NodeId if successful; otherwise null.</param>
+        /// <returns>True if parsing succeeded, otherwise false.</returns>
+        public static bool TryParse(string input, out NodeId? nodeId)
+        {
+            nodeId = null;
+            if (string.IsNullOrWhiteSpace(input)) return false;
+
+            ushort ns = 0;
+            string? nsu = null;
+            uint svr = 0;
+
+            uint? numericId = null;
+            string? stringId = null;
+            Guid? guidId = null;
+            byte[]? byteStringId = null;
+
+            try
+            {
+                string[] parts = input.Split(';');
+                if (parts.Length == 1 && uint.TryParse(parts[0], out uint rootId))
+                {
+                    nodeId = new NodeId(rootId);
+                    return true;
+                }
+
+                foreach (string part in parts)
+                {
+                    string trimmedPart = part.Trim();
+                    if (string.IsNullOrEmpty(trimmedPart)) continue;
+
+                    int equalsIndex = trimmedPart.IndexOf('=');
+                    if (equalsIndex == -1) continue;
+
+                    string key = trimmedPart[..equalsIndex].Trim().ToLowerInvariant();
+                    string value = trimmedPart[(equalsIndex + 1)..].Trim();
+
+                    switch (key)
+                    {
+                        case "ns":
+                            if (!ushort.TryParse(value, out ns)) return false;
+                            break;
+                        case "nsu":
+                            nsu = value;
+                            break;
+                        case "svr":
+                            if (!uint.TryParse(value, out svr)) return false;
+                            break;
+                        case "i":
+                            if (!uint.TryParse(value, out uint i)) return false;
+                            numericId = i;
+                            break;
+                        case "s":
+                            stringId = value;
+                            break;
+                        case "g":
+                            if (!Guid.TryParse(value, out Guid g)) return false;
+                            guidId = g;
+                            break;
+                        case "b":
+                            try { byteStringId = Convert.FromBase64String(value); }
+                            catch { return false; }
+                            break;
+                    }
+                }
+
+                // Identifier selection logic
+                if (numericId.HasValue)
+                    nodeId = new NodeId(ns, numericId.Value);
+                else if (stringId != null)
+                    nodeId = new NodeId(ns, stringId);
+                else if (guidId.HasValue)
+                    nodeId = new NodeId(ns, guidId.Value);
+                else if (byteStringId != null)
+                    nodeId = new NodeId(ns, byteStringId);
+                else
+                    return false;
+
+                if (!string.IsNullOrEmpty(nsu)) nodeId.NamespaceUri = nsu;
+                if (svr > 0) nodeId.ServerIndex = svr;
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
 }

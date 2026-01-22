@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace LiteUa.Tests.UnitTests.Building
+namespace LiteUa.Tests.UnitTests.Client.Building
 {
     [Trait("Category", "Unit")]
     public class UaClientBuilderTests

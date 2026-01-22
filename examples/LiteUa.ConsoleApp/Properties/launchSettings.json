@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "LiteUa.ConsoleApp": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}

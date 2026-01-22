@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
-namespace LiteUa.Tests.UnitTests.Building
+namespace LiteUa.Tests.UnitTests.Client.Building
 {
     [Trait("Category", "Unit")]
     public class UaClientOptionsTests
