@@ -16,7 +16,7 @@ Unlike other libraries that wrap the official OPC Foundation .NET Stack (which i
 
 - **Zero 3rd Party Dependencies**: The core library is built directly on `System.Net.Sockets` and `System.Buffers`. No dependency on the official OPC Foundation Stack. No GPL viral licensing issues.
 - **Pure C#**: Fully managed code without native wrappers.
-- **High Performance**: Features a built-in `ConnectionPool` for request-heavy scenarios.
+- **High Performance**: Features a built-in `UaClientPool` for request-heavy scenarios.
 - **Resilient**: Includes a `SubscriptionClient` with automatic reconnection and self-healing capabilities.
 - **Tested**: Everything is tested using integration tests against Siemens S7-1200 (modeled OPC Server interface) and S7-1500 controllers (standard Simatic OPC Server interface).
 
@@ -25,7 +25,7 @@ Unlike other libraries that wrap the official OPC Foundation .NET Stack (which i
 While the **LiteUa** core library is strictly dependency-free to ensure ease of licensing, the **Test Projects** utilize external packages (e.g., xUnit, Microsoft.NET.Test.Sdk) to ensure code quality and protocol correctness.
 
 For a full list of dependencies used in the test environment, please refer to:
-📄 **[THIRD-PARTY-PACKAGES.md](https://github.com/philipp2604/LiteUa/blob/master/README.md)**
+📄 **[THIRD-PARTY-PACKAGES.md](https://github.com/philipp2604/LiteUa/blob/master/tests/LiteUa.Tests/THIRD-PARTY-PACKAGES.md)**
 
 ## ✨ Implemented Features
 
