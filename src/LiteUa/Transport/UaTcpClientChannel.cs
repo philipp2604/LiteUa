@@ -15,6 +15,7 @@ using LiteUa.Stack.View;
 using LiteUa.Transport.Headers;
 using LiteUa.Transport.TcpMessages;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -41,7 +42,12 @@ namespace LiteUa.Transport
         private int _requestId = 1;
         public uint SecureChannelId = 0; // 0 while disconnected
         private NodeId _authenticationToken = new(0); // Session Token
-        private uint _tokenId;
+        private uint _tokenId; 
+        
+        private readonly ConcurrentDictionary<uint, PendingRequest> _pendingRequests = new();
+        private Task? _responseProcessorTask;
+        private CancellationTokenSource? _channelCts;
+        private bool _isClosing = false;
 
         // --- Renewal Management ---
         private CancellationTokenSource? _renewCts;
@@ -109,6 +115,136 @@ namespace LiteUa.Transport
             _clientNonce = new byte[32];
             using var rng = RandomNumberGenerator.Create();
             rng.GetBytes(_clientNonce);
+        }
+
+        private async Task ProcessResponsesAsync()
+        {
+            var token = _channelCts!.Token;
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    if (_isClosing && _pendingRequests.IsEmpty) break;
+
+                    byte[] headerBase = new byte[8];
+                    await ReadExactAsync(_stream!, headerBase, 8, token);
+
+                    string msgType = System.Text.Encoding.ASCII.GetString(headerBase, 0, 3);
+                    uint msgSize = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(headerBase.AsSpan(4));
+
+                    if (msgSize < 12) throw new Exception("Message size too small.");
+
+                    int remainingSize = (int)msgSize - 8;
+                    byte[] payload = new byte[remainingSize];
+                    await ReadExactAsync(_stream!, payload, remainingSize, token);
+
+                    if (msgType == "ERR")
+                    {
+                        using var msErr = new MemoryStream(payload);
+                        var rErr = new OpcUaBinaryReader(msErr);
+                        var err = new TcpErrorMessage();
+                        err.Decode(rErr);
+                        throw new Exception($"Protocol Error: {err.Reason} (0x{err.ErrorCode:X8})");
+                    }
+
+                    byte[] decryptedBytes;
+                    uint requestId;
+
+                    if (msgType == "OPN")
+                    {
+                        using var msOpn = new MemoryStream(payload);
+                        var rOpn = new OpcUaBinaryReader(msOpn);
+                        msOpn.Seek(4, SeekOrigin.Begin);
+                        _ = rOpn.ReadString(); _ = rOpn.ReadByteString(); _ = rOpn.ReadByteString();
+                        int headerLen = (int)msOpn.Position;
+
+                        byte[] cipherText = new byte[payload.Length - headerLen];
+                        Array.Copy(payload, headerLen, cipherText, 0, cipherText.Length);
+
+                        if (_securityMode != MessageSecurityMode.None)
+                        {
+                            byte[] plainBlock = _securityPolicy.DecryptAsymmetric(cipherText);
+                            requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(plainBlock.AsSpan(4, 4));
+                            decryptedBytes = plainBlock;
+                        }
+                        else
+                        {
+                            requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(cipherText.AsSpan(4, 4));
+                            decryptedBytes = cipherText;
+                        }
+                    }
+                    else
+                    {
+                        int cryptoOffset = 8; // ChannelId + TokenId
+                        int cipherTextLen = payload.Length - cryptoOffset;
+                        byte[] cipherText = new byte[cipherTextLen];
+                        Array.Copy(payload, cryptoOffset, cipherText, 0, cipherTextLen);
+
+                        if (_securityMode == MessageSecurityMode.SignAndEncrypt)
+                        {
+                            byte[] plainBlock = _securityPolicy.DecryptSymmetric(cipherText);
+                            requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(plainBlock.AsSpan(4, 4));
+
+                            int sigSize = _securityPolicy.SymmetricSignatureSize;
+                            int dataLen = plainBlock.Length - sigSize;
+                            byte[] signature = new byte[sigSize];
+                            Array.Copy(plainBlock, dataLen, signature, 0, sigSize);
+
+                            byte[] verifyBuf = new byte[8 + 8 + dataLen];
+                            Array.Copy(headerBase, 0, verifyBuf, 0, 8);
+                            Array.Copy(payload, 0, verifyBuf, 8, 8);
+                            Array.Copy(plainBlock, 0, verifyBuf, 16, dataLen);
+
+                            if (!_securityPolicy.VerifySymmetric(verifyBuf, signature))
+                                throw new Exception("Symmetric Signature Verification Failed.");
+
+                            byte paddingByte = plainBlock[dataLen - 1];
+                            decryptedBytes = new byte[dataLen - (paddingByte + 1)];
+                            Array.Copy(plainBlock, 0, decryptedBytes, 0, decryptedBytes.Length);
+                        }
+                        else if (_securityMode == MessageSecurityMode.Sign)
+                        {
+                            int sigSize = _securityPolicy.SymmetricSignatureSize;
+                            int dataLen = cipherText.Length - sigSize;
+                            requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(cipherText.AsSpan(4, 4));
+
+                            byte[] signature = new byte[sigSize];
+                            Array.Copy(cipherText, dataLen, signature, 0, sigSize);
+
+                            byte[] verifyBuf = new byte[8 + 8 + dataLen];
+                            Array.Copy(headerBase, 0, verifyBuf, 0, 8);
+                            Array.Copy(payload, 0, verifyBuf, 8, 8);
+                            Array.Copy(cipherText, 0, verifyBuf, 16, dataLen);
+
+                            if (!_securityPolicy.VerifySymmetric(verifyBuf, signature))
+                                throw new Exception("Symmetric Signature Verification Failed.");
+
+                            decryptedBytes = new byte[dataLen];
+                            Array.Copy(cipherText, 0, decryptedBytes, 0, dataLen);
+                        }
+                        else
+                        {
+                            requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(cipherText.AsSpan(4, 4));
+                            decryptedBytes = cipherText;
+                        }
+                    }
+
+                    if (_pendingRequests.TryRemove(requestId, out var pending))
+                    {
+                        pending.Tcs.TrySetResult(decryptedBytes);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!_isClosing)
+                {
+                    foreach (var req in _pendingRequests.Values)
+                        req.Tcs.TrySetException(ex);
+                    _pendingRequests.Clear();
+                    throw;
+                }
+            }
         }
 
         public async Task<NodeId?[]> ResolveNodeIdsAsync(NodeId startNode, string[] paths, CancellationToken token = default)
@@ -303,46 +439,170 @@ namespace LiteUa.Transport
 
         public async Task DisconnectAsync()
         {
+            if (_stream == null) return;
+
+            _isClosing = true;
+
             try
             {
-                if (_renewCts != null && !_renewCts.IsCancellationRequested)
-                {
-                    _renewCts.Cancel();
-                }
-            }
-            catch (ObjectDisposedException) { }
-
-            var stream = _stream;
-            var client = _client;
-
-            // 2. Close session
-            if (_authenticationToken.NumericIdentifier != 0 && stream != null)
-            {
-                try
+                if (_authenticationToken != null && _authenticationToken.NumericIdentifier != 0)
                 {
                     var req = new CloseSessionRequest { RequestHeader = CreateRequestHeader(), DeleteSubscriptions = true };
-                    await SendRequestAsync<CloseSessionRequest, CloseSessionResponse>(req);
+                    using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(2000));
+                    try
+                    {
+                        await SendRequestAsync<CloseSessionRequest, CloseSessionResponse>(req, cts.Token);
+                    }
+                    catch { /* Session might already be closed or timed out */ }
+                    _authenticationToken = new NodeId(0);
                 }
-                catch { /* Ignore network errors during shutdown */ }
-            }
 
-            // 3. Close channel
-            if (SecureChannelId != 0 && stream != null)
-            {
-                try
+                if (SecureChannelId != 0)
                 {
                     var req = new CloseSecureChannelRequest { RequestHeader = CreateRequestHeader() };
-                    await SendRequestAsync<CloseSecureChannelRequest, CloseSecureChannelResponse>(req);
+                    using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1000));
+                    try
+                    {
+                        await SendRequestAsync<CloseSecureChannelRequest, CloseSecureChannelResponse>(req, cts.Token);
+                    }
+                    catch { /* Channel might already be closed by server */ }
+                    SecureChannelId = 0;
                 }
-                catch { /* Ignore network errors during shutdown */ }
             }
+            catch (Exception)
+            {
+                // Best effort shutdown
+            }
+
+            _channelCts?.Cancel();
+
+            if (_responseProcessorTask != null)
+            {
+                try { await _responseProcessorTask; } catch { }
+                _responseProcessorTask = null;
+            }
+
+            _stream?.Dispose();
+            _client?.Dispose();
             _stream = null;
             _client = null;
-            SecureChannelId = 0;
-            _authenticationToken = new NodeId(0);
+            _channelCts?.Dispose();
+            _channelCts = null;
+        }
 
-            stream?.Dispose();
-            client?.Dispose();
+        private byte[] PrepareOpenSecureChannelPacket(byte[] bodyBytes, uint requestId, uint sequenceNumber)
+        {
+            byte[]? senderCertData = _securityMode != MessageSecurityMode.None ? _clientCertificate?.RawData : null;
+            byte[]? receiverThumbprint = _securityMode != MessageSecurityMode.None ? _serverCertificate?.GetCertHash() : null;
+
+            var securityHeader = new AsymmetricAlgorithmSecurityHeader
+            {
+                SecurityPolicyUri = _securityPolicy.SecurityPolicyUri,
+                SenderCertificate = senderCertData,
+                ReceiverCertificateThumbprint = receiverThumbprint
+            };
+
+            byte[] securityHeaderBytes;
+            using (var msh = new MemoryStream())
+            {
+                var wh = new OpcUaBinaryWriter(msh);
+                securityHeader.Encode(wh);
+                securityHeaderBytes = msh.ToArray();
+            }
+
+            int plainContentSize = 8 + bodyBytes.Length;
+            int signatureSize = _securityPolicy.AsymmetricSignatureSize;
+            int inputBlockSize = _securityPolicy.AsymmetricEncryptionBlockSize;
+            int outputBlockSize = _securityPolicy.AsymmetricCipherTextBlockSize;
+            int paddingSize = PaddingCalculator.CalculatePaddingSize(plainContentSize, signatureSize, inputBlockSize);
+            int totalPlainTextSize = plainContentSize + paddingSize + signatureSize;
+
+            byte[] plainTextBlob = new byte[totalPlainTextSize];
+            using (var msPlain = new MemoryStream(plainTextBlob))
+            {
+                var wPlain = new OpcUaBinaryWriter(msPlain);
+                new SequenceHeader { SequenceNumber = sequenceNumber, RequestId = requestId }.Encode(wPlain);
+                wPlain.WriteBytes(bodyBytes);
+                if (paddingSize > 0)
+                {
+                    byte p = (byte)(paddingSize - 1);
+                    for (int i = 0; i < paddingSize; i++) wPlain.WriteByte(p);
+                }
+            }
+
+            int encryptedDataSize = (totalPlainTextSize / inputBlockSize) * outputBlockSize;
+            int finalMessageSize = 12 + securityHeaderBytes.Length + encryptedDataSize;
+
+            byte[] headerBytes;
+            using (var msH = new MemoryStream())
+            {
+                var wH = new OpcUaBinaryWriter(msH);
+                new SecureConversationMessageHeader { MessageType = "OPN", ChunkType = 'F', MessageSize = (uint)finalMessageSize, SecureChannelId = SecureChannelId }.Encode(wH);
+                headerBytes = msH.ToArray();
+            }
+
+            if (signatureSize > 0)
+            {
+                byte[] dataToSign = new byte[headerBytes.Length + securityHeaderBytes.Length + (totalPlainTextSize - signatureSize)];
+                Array.Copy(headerBytes, 0, dataToSign, 0, headerBytes.Length);
+                Array.Copy(securityHeaderBytes, 0, dataToSign, headerBytes.Length, securityHeaderBytes.Length);
+                Array.Copy(plainTextBlob, 0, dataToSign, headerBytes.Length + securityHeaderBytes.Length, totalPlainTextSize - signatureSize);
+                byte[] sig = _securityPolicy.Sign(dataToSign);
+                Array.Copy(sig, 0, plainTextBlob, totalPlainTextSize - signatureSize, signatureSize);
+            }
+
+            byte[] encryptedBlob = _securityPolicy.EncryptAsymmetric(plainTextBlob);
+            byte[] finalPacket = new byte[headerBytes.Length + securityHeaderBytes.Length + encryptedBlob.Length];
+            Array.Copy(headerBytes, 0, finalPacket, 0, headerBytes.Length);
+            Array.Copy(securityHeaderBytes, 0, finalPacket, headerBytes.Length, securityHeaderBytes.Length);
+            Array.Copy(encryptedBlob, 0, finalPacket, headerBytes.Length + securityHeaderBytes.Length, encryptedBlob.Length);
+            return finalPacket;
+        }
+
+        private byte[] PrepareSymmetricPacket(byte[] bodyBytes, uint requestId, uint sequenceNumber, bool isClose)
+        {
+            int plainContentSize = 8 + bodyBytes.Length;
+            int signatureSize = _securityPolicy.SymmetricSignatureSize;
+            int blockSize = _securityPolicy.SymmetricBlockSize;
+            int paddingSize = PaddingCalculator.CalculatePaddingSize(plainContentSize, signatureSize, blockSize);
+            int totalBodySize = 4 + plainContentSize + paddingSize + signatureSize;
+            int totalMessageSize = 12 + totalBodySize;
+
+            byte[] packet = new byte[totalMessageSize];
+            using (var ms = new MemoryStream(packet))
+            {
+                var w = new OpcUaBinaryWriter(ms);
+                new SecureConversationMessageHeader { MessageType = isClose ? "CLO" : "MSG", ChunkType = 'F', MessageSize = (uint)totalMessageSize, SecureChannelId = SecureChannelId }.Encode(w);
+                w.WriteUInt32(_tokenId);
+
+                byte[] innerPart = new byte[plainContentSize + paddingSize + signatureSize];
+                using (var msInner = new MemoryStream(innerPart))
+                {
+                    var wInner = new OpcUaBinaryWriter(msInner);
+                    new SequenceHeader { SequenceNumber = sequenceNumber, RequestId = requestId }.Encode(wInner);
+                    wInner.WriteBytes(bodyBytes);
+                    if (paddingSize > 0)
+                    {
+                        byte p = (byte)(paddingSize - 1);
+                        for (int i = 0; i < paddingSize; i++) wInner.WriteByte(p);
+                    }
+                }
+
+                if (signatureSize > 0)
+                {
+                    byte[] dataToSign = new byte[16 + innerPart.Length - signatureSize];
+                    Array.Copy(packet, 0, dataToSign, 0, 16);
+                    Array.Copy(innerPart, 0, dataToSign, 16, innerPart.Length - signatureSize);
+                    byte[] sig = _securityPolicy.SignSymmetric(dataToSign);
+                    Array.Copy(sig, 0, innerPart, innerPart.Length - signatureSize, signatureSize);
+                }
+
+                if (_securityMode == MessageSecurityMode.SignAndEncrypt)
+                    w.WriteBytes(_securityPolicy.EncryptSymmetric(innerPart));
+                else
+                    w.WriteBytes(innerPart);
+            }
+            return packet;
         }
 
         public RequestHeader CreateRequestHeader()
@@ -361,15 +621,19 @@ namespace LiteUa.Transport
         public async Task ConnectAsync(CancellationToken cancellationToken = default)
         {
             var uri = new Uri(_endpointUrl);
-            /// TODO: throw if port invalid
             int port = uri.Port == -1 ? 4840 : uri.Port;
 
             _stream = await CreateStreamAsync(uri.Host, port, cancellationToken);
 
-            // 1. Hello / Acknowledge
+            // 1. Handshake (Serial)
             await PerformHandshakeAsync(uri.AbsoluteUri, cancellationToken);
 
-            // 2. Open Secure Channel
+            // 2. Initialize Dispatcher
+            _channelCts = new CancellationTokenSource();
+            _isClosing = false;
+            _responseProcessorTask = Task.Run(ProcessResponsesAsync, _channelCts.Token);
+
+            // 3. Open Secure Channel
             await OpenSecureChannelAsync(cancellationToken);
         }
 
@@ -771,9 +1035,6 @@ namespace LiteUa.Transport
 
         private async Task OpenSecureChannelAsync(CancellationToken cancellationToken)
         {
-            if (_stream == null)
-                throw new InvalidOperationException("Not connected to server.");
-
             var request = new OpenSecureChannelRequest
             {
                 RequestHeader = CreateRequestHeader(),
@@ -784,134 +1045,20 @@ namespace LiteUa.Transport
                 RequestedLifetime = 3600000
             };
 
-            byte[] bodyBytes;
-            using (var msBody = new MemoryStream())
+            var response = await SendRequestAsync<OpenSecureChannelRequest, OpenSecureChannelResponse>(request, cancellationToken);
+
+            if (response.ResponseHeader?.ServiceResult != 0)
+                throw new Exception($"OpenSecureChannel Failed: 0x{response.ResponseHeader?.ServiceResult:X8}");
+
+            SecureChannelId = response.SecurityToken!.ChannelId;
+            _tokenId = response.SecurityToken.TokenId;
+
+            if (response.ServerNonce != null && _clientNonce != null)
             {
-                var writerBody = new OpcUaBinaryWriter(msBody);
-                request.Encode(writerBody);
-                bodyBytes = msBody.ToArray();
+                _securityPolicy.DeriveKeys(_clientNonce, response.ServerNonce);
             }
 
-            byte[]? senderCertData = null;
-            byte[]? receiverThumbprint = null;
-
-            if (_securityMode != MessageSecurityMode.None)
-            {
-                senderCertData = _clientCertificate?.RawData;
-                receiverThumbprint = _serverCertificate?.GetCertHash(); // SHA1 Hash
-            }
-
-            var securityHeader = new AsymmetricAlgorithmSecurityHeader
-            {
-                SecurityPolicyUri = _securityPolicy.SecurityPolicyUri,
-                SenderCertificate = senderCertData,
-                ReceiverCertificateThumbprint = receiverThumbprint
-            };
-
-            byte[] securityHeaderBytes;
-            using (var msh = new MemoryStream())
-            {
-                var wh = new OpcUaBinaryWriter(msh);
-                securityHeader.Encode(wh);
-                securityHeaderBytes = msh.ToArray();
-            }
-
-            var sequenceHeader = new SequenceHeader
-            {
-                SequenceNumber = _sequenceNumber++,
-                RequestId = (uint)_requestId
-            };
-
-            // Plaintext to Encrypt = SequenceHeader(8) + Body + Padding + Signature
-
-            int plainContentSize = 8 + bodyBytes.Length; // Sequence + Body
-            int signatureSize = _securityPolicy.AsymmetricSignatureSize;
-            int inputBlockSize = _securityPolicy.AsymmetricEncryptionBlockSize; // z.B. 214 wtih RSA 2048 Basic256Sha256
-            int outputBlockSize = _securityPolicy.AsymmetricCipherTextBlockSize; // z.B. 256 with RSA 2048
-
-            int paddingSize = PaddingCalculator.CalculatePaddingSize(plainContentSize, signatureSize, inputBlockSize);
-
-            int totalPlainTextSize = plainContentSize + paddingSize + signatureSize;
-
-            if (totalPlainTextSize % inputBlockSize != 0)
-                throw new Exception("Padding calculation failed. PlainText size is not multiple of BlockSize.");
-
-            int chunks = totalPlainTextSize / inputBlockSize;
-            int encryptedDataSize = chunks * outputBlockSize;
-
-            int finalMessageSize = 12 + securityHeaderBytes.Length + encryptedDataSize;
-
-            byte[] plainTextBlob = new byte[totalPlainTextSize];
-            using (var msPlain = new MemoryStream(plainTextBlob))
-            {
-                var wPlain = new OpcUaBinaryWriter(msPlain);
-                // Sequence Header
-                sequenceHeader.Encode(wPlain);
-                // Body
-                wPlain.WriteBytes(bodyBytes);
-                // Padding
-                if (paddingSize > 0)
-                {
-                    byte paddingByte = (byte)(paddingSize - 1);
-                    for (int i = 0; i < paddingSize; i++) wPlain.WriteByte(paddingByte);
-                }
-                // Signature (placeholder)
-                if (signatureSize > 0) wPlain.WriteBytes(new byte[signatureSize]);
-            }
-
-            var msgHeader = new SecureConversationMessageHeader
-            {
-                MessageType = "OPN",
-                ChunkType = 'F',
-                MessageSize = (uint)finalMessageSize,
-                SecureChannelId = SecureChannelId
-            };
-
-            byte[] headerBytes;
-            using (var msH = new MemoryStream())
-            {
-                var wH = new OpcUaBinaryWriter(msH);
-                msgHeader.Encode(wH);
-                headerBytes = msH.ToArray();
-            }
-
-            if (signatureSize > 0)
-            {
-                // [Header] + [SecurityHeader] + [PlainTextBlob (without Sig)]
-
-                int bytesToSignLen = headerBytes.Length + securityHeaderBytes.Length + (totalPlainTextSize - signatureSize);
-                byte[] dataToSign = new byte[bytesToSignLen];
-
-                int offset = 0;
-                Array.Copy(headerBytes, 0, dataToSign, offset, headerBytes.Length); offset += headerBytes.Length;
-                Array.Copy(securityHeaderBytes, 0, dataToSign, offset, securityHeaderBytes.Length); offset += securityHeaderBytes.Length;
-                // Plaintext blob minus signature placeholder
-                Array.Copy(plainTextBlob, 0, dataToSign, offset, totalPlainTextSize - signatureSize);
-
-                // sign
-                byte[] signature = _securityPolicy.Sign(dataToSign);
-
-                // copy signature into plainTextBlob
-                Array.Copy(signature, 0, plainTextBlob, totalPlainTextSize - signatureSize, signatureSize);
-            }
-
-            byte[] encryptedBlob = _securityPolicy.EncryptAsymmetric(plainTextBlob);
-
-            if (encryptedBlob.Length != encryptedDataSize)
-                throw new Exception($"Encryption size mismatch. Expected {encryptedDataSize}, got {encryptedBlob.Length}");
-
-            using (var msFinal = new MemoryStream())
-            {
-                var wFinal = new OpcUaBinaryWriter(msFinal);
-                wFinal.WriteBytes(headerBytes);
-                wFinal.WriteBytes(securityHeaderBytes);
-                wFinal.WriteBytes(encryptedBlob);
-
-                byte[] packet = msFinal.ToArray();
-                await _stream.WriteAsync(packet, cancellationToken);
-            }
-
-            await ReceiveOpenSecureChannelResponse(cancellationToken);
+            StartRenewalLoop(response.SecurityToken.RevisedLifetime, cancellationToken);
         }
 
         private async Task ReceiveOpenSecureChannelResponse(CancellationToken cancellationToken)
@@ -1055,399 +1202,114 @@ namespace LiteUa.Transport
         }
 
         public async Task<TResponse> SendRequestAsync<TRequest, TResponse>(TRequest request, CancellationToken cancellationToken = default)
-            where TResponse : new()
+    where TResponse : new()
         {
-            if (_stream == null)
-                throw new InvalidOperationException("Not connected to server.");
+            bool isShutdownRequest = request is CloseSessionRequest || request is CloseSecureChannelRequest;
 
-            await _lock.WaitAsync(cancellationToken);
+            if (_stream == null || (_isClosing && !isShutdownRequest))
+                throw new InvalidOperationException("Channel is not connected or is closing.");
+
+            uint handle = (uint)Interlocked.Increment(ref _requestId);
+            //uint handle = (uint)_requestId;
+            var pending = new PendingRequest();
+            _pendingRequests.TryAdd(handle, pending);
             try
             {
                 byte[] bodyBytes;
                 using (var ms = new MemoryStream())
                 {
                     var w = new OpcUaBinaryWriter(ms);
-                    if (request is GetEndpointsRequest ge) ge.Encode(w);
-                    else if (request is CreateSessionRequest cs) cs.Encode(w);
-                    else if (request is ActivateSessionRequest asr) asr.Encode(w);
-                    else if (request is ReadRequest rr) rr.Encode(w);
-                    else if (request is WriteRequest wr) wr.Encode(w);
-                    else if (request is BrowseRequest br) br.Encode(w);
-                    else if (request is CreateSubscriptionRequest csr) csr.Encode(w);
-                    else if (request is CreateMonitoredItemsRequest cmir) cmir.Encode(w);
-                    else if (request is PublishRequest pr) pr.Encode(w);
-                    else if (request is CloseSessionRequest csr2) csr2.Encode(w);
-                    else if (request is CloseSecureChannelRequest cscr) cscr.Encode(w);
-                    else if (request is CallRequest cr) cr.Encode(w);
-                    else if (request is BrowseNextRequest bcr) bcr.Encode(w);
-                    else if (request is DeleteMonitoredItemsRequest dmir) dmir.Encode(w);
-                    else if (request is DeleteSubscriptionsRequest dsr) dsr.Encode(w);
-                    else if (request is ModifyMonitoredItemsRequest mmir) mmir.Encode(w);
-                    else if (request is SetMonitoringModeRequest smmr) smmr.Encode(w);
-                    else if (request is SetPublishingModeRequest spmr) spmr.Encode(w);
-                    else if (request is TranslateBrowsePathsToNodeIdsRequest tbptnidr) tbptnidr.Encode(w);
-                    else throw new NotImplementedException($"Request Type {typeof(TRequest).Name} not supported.");
-
+                    if (request is GetEndpointsRequest reqGe) reqGe.Encode(w);
+                    else if (request is OpenSecureChannelRequest reqOsc) reqOsc.Encode(w);
+                    else if (request is CreateSessionRequest reqCs) reqCs.Encode(w);
+                    else if (request is ActivateSessionRequest reqAsr) reqAsr.Encode(w);
+                    else if (request is ReadRequest reqRr) reqRr.Encode(w);
+                    else if (request is WriteRequest reqWr) reqWr.Encode(w);
+                    else if (request is BrowseRequest reqBr) reqBr.Encode(w);
+                    else if (request is CreateSubscriptionRequest reqCsr) reqCsr.Encode(w);
+                    else if (request is CreateMonitoredItemsRequest reqCmir) reqCmir.Encode(w);
+                    else if (request is PublishRequest reqPr) reqPr.Encode(w);
+                    else if (request is CloseSessionRequest reqCsr2) reqCsr2.Encode(w);
+                    else if (request is CloseSecureChannelRequest reqCscr) reqCscr.Encode(w);
+                    else if (request is CallRequest reqCr) reqCr.Encode(w);
+                    else if (request is BrowseNextRequest reqBnr) reqBnr.Encode(w);
+                    else if (request is DeleteMonitoredItemsRequest reqDmir) reqDmir.Encode(w);
+                    else if (request is DeleteSubscriptionsRequest reqDsr) reqDsr.Encode(w);
+                    else if (request is ModifyMonitoredItemsRequest reqMmir) reqMmir.Encode(w);
+                    else if (request is SetMonitoringModeRequest reqSmmr) reqSmmr.Encode(w);
+                    else if (request is SetPublishingModeRequest reqSpmr) reqSpmr.Encode(w);
+                    else if (request is TranslateBrowsePathsToNodeIdsRequest reqTbpt) reqTbpt.Encode(w);
+                    else throw new NotImplementedException($"Encoding for {typeof(TRequest).Name} not implemented.");
                     bodyBytes = ms.ToArray();
                 }
 
-                // Header from MSG:
-                // [SecureConversationMessageHeader (12)]
-                // [SymmetricSecurityHeader (4)] (TokenId)
-                // [SequenceHeader (8)]
-                // [Body]
-                // [Padding]
-                // [Signature]
-
-                int plainTextContentSize = 8 + bodyBytes.Length; // SequenceHeader + Body
-                int signatureSize = _securityPolicy.SymmetricSignatureSize; // HMAC size
-                int blockSize = _securityPolicy.SymmetricBlockSize; // CBC Block size
-
-                int paddingSize = PaddingCalculator.CalculatePaddingSize(plainTextContentSize, signatureSize, blockSize);
-
-                int totalSize = 12 + 4 + plainTextContentSize + paddingSize + signatureSize;
-
-                using (var msFinal = new MemoryStream(totalSize))
+                await _lock.WaitAsync(cancellationToken);
+                try
                 {
-                    var w = new OpcUaBinaryWriter(msFinal);
-                    // Header MSG
-                    var msgHeader = new SecureConversationMessageHeader
-                    {
-                        MessageType = request is CloseSecureChannelRequest ? "CLO" : "MSG",
-                        ChunkType = 'F',
-                        MessageSize = (uint)totalSize,
-                        SecureChannelId = SecureChannelId
-                    };
+                    // Assign sequence number inside the lock to ensure wire order
+                    uint seq = _sequenceNumber++;
 
-                    msgHeader.Encode(w);
+                    byte[] finalPacket = request is OpenSecureChannelRequest
+                        ? PrepareOpenSecureChannelPacket(bodyBytes, handle, seq)
+                        : PrepareSymmetricPacket(bodyBytes, handle, seq, request is CloseSecureChannelRequest);
 
-                    // Symmetric Security Header (TokenId only)
-                    w.WriteUInt32(_tokenId);
-
-                    // Sequence Header (Start Encryption)
-                    long cryptoStart = msFinal.Position;
-                    var nextHandle = (uint)Interlocked.Increment(ref _requestId);
-                    var seqHeader = new SequenceHeader { SequenceNumber = _sequenceNumber++, RequestId = nextHandle };
-                    seqHeader.Encode(w);
-
-                    // Body
-                    w.WriteBytes(bodyBytes);
-
-                    // Padding
-                    if (paddingSize > 0)
-                    {
-                        byte paddingByte = (byte)(paddingSize - 1);
-                        for (int i = 0; i < paddingSize; i++) w.WriteByte(paddingByte);
-                    }
-
-                    // Signature place holder
-                    long sigPos = msFinal.Position;
-                    if (signatureSize > 0) w.WriteBytes(new byte[signatureSize]);
-
-                    // --- Crypto ---
-                    byte[] raw = msFinal.ToArray();
-
-                    // F. Sign (Header + Body + Padding)
-                    if (signatureSize > 0)
-                    {
-                        byte[] dataToSign = new byte[sigPos];
-                        Array.Copy(raw, 0, dataToSign, 0, sigPos);
-
-                        byte[] signature = _securityPolicy.SignSymmetric(dataToSign);
-
-                        if (signature.Length != signatureSize)
-                            throw new Exception("Symmetric Signature size mismatch");
-
-                        Array.Copy(signature, 0, raw, sigPos, signatureSize);
-                    }
-
-                    // G. Encryption
-                    // MsgHeader(12) + TokenId(4) = 16.
-                    if (_securityMode == MessageSecurityMode.SignAndEncrypt)
-                    {
-                        // MsgHeader(12) + TokenId(4) = 16.
-                        int cryptoStartOffset = 16;
-                        int encryptLen = raw.Length - cryptoStartOffset;
-
-                        byte[] dataToEncrypt = new byte[encryptLen];
-                        Array.Copy(raw, cryptoStartOffset, dataToEncrypt, 0, encryptLen);
-
-                        byte[] encryptedData = _securityPolicy.EncryptSymmetric(dataToEncrypt);
-                        Array.Copy(encryptedData, 0, raw, cryptoStartOffset, encryptedData.Length);
-                    }
-
-                    await _stream.WriteAsync(raw, cancellationToken);
+                    await _stream!.WriteAsync(finalPacket, cancellationToken);
+                }
+                finally
+                {
+                    _lock.Release();
                 }
 
-                // 4. Response
-                return await ReceiveResponseAsync<TResponse>(cancellationToken);
-            }
-            finally
-            {
-                _lock.Release();
-            }
-        }
-
-        private async Task<TResponse> ReceiveResponseAsync<TResponse>(CancellationToken cancellationToken) where TResponse : new()
-        {
-            if (_stream == null)
-                throw new InvalidOperationException("Not connected to server.");
-
-            byte[] headerBase = new byte[8];
-            await ReadExactAsync(_stream, headerBase, 8, cancellationToken);
-
-            string msgType;
-            uint msgSize;
-
-            using (var msH = new MemoryStream(headerBase))
-            {
-                var rH = new OpcUaBinaryReader(msH);
-                msgType = new string([(char)rH.ReadByte(), (char)rH.ReadByte(), (char)rH.ReadByte()]);
-                char chunkType = (char)rH.ReadByte();
-                msgSize = rH.ReadUInt32();
-            }
-
-            if (msgType == "ERR")
-            {
-                int errLen = (int)(msgSize - 8);
-                byte[] errBody = new byte[errLen];
-                await ReadExactAsync(_stream, errBody, errLen, cancellationToken);
-
-                using var msErr = new MemoryStream(errBody);
-                var rErr = new OpcUaBinaryReader(msErr);
-                var err = new TcpErrorMessage();
-                err.Decode(rErr);
-                throw new Exception($"OPC UA Error: {err.Reason} (0x{err.ErrorCode:X8})");
-            }
-
-            if (msgType != "MSG") throw new Exception($"Expected MSG, got {msgType}");
-
-            byte[] channelIdBuf = new byte[4];
-            await ReadExactAsync(_stream, channelIdBuf, 4, cancellationToken);
-            ///TODO: Check channel id
-
-            // Body Size = Total Size - 12 Bytes Header
-            int totalBodyLen = (int)(msgSize - 12);
-            byte[] fullBody = new byte[totalBodyLen];
-            await ReadExactAsync(_stream, fullBody, totalBodyLen, cancellationToken);
-
-            byte[] decryptedBytes;
-            int cryptoStartOffset = 4; // TokenId Size
-
-            if (_securityMode == MessageSecurityMode.SignAndEncrypt)
-            {
-                int encryptedLen = totalBodyLen - cryptoStartOffset;
-                byte[] cipherText = new byte[encryptedLen];
-                Array.Copy(fullBody, cryptoStartOffset, cipherText, 0, encryptedLen);
-
-                byte[] plainTextPart = _securityPolicy.DecryptSymmetric(cipherText);
-
-                int sigSize = _securityPolicy.SymmetricSignatureSize;
-                int dataLen = plainTextPart.Length - sigSize;
-                byte[] signature = new byte[sigSize];
-                Array.Copy(plainTextPart, dataLen, signature, 0, sigSize);
-
-                // [BaseHeader(8)] + [ChannelId(4)] + [TokenId(4)] + [PlainPartWithoutSig]
-                int signedDataLen = 8 + 4 + 4 + dataLen;
-                byte[] dataToVerify = new byte[signedDataLen];
-                int off = 0;
-                Array.Copy(headerBase, 0, dataToVerify, off, 8); off += 8;
-                Array.Copy(channelIdBuf, 0, dataToVerify, off, 4); off += 4;
-                Array.Copy(fullBody, 0, dataToVerify, off, 4); off += 4; // TokenId
-                Array.Copy(plainTextPart, 0, dataToVerify, off, dataLen);
-
-                if (!_securityPolicy.VerifySymmetric(dataToVerify, signature))
+                if (request is CloseSecureChannelRequest)
                 {
-                    throw new Exception("Symmetric Signature Verification Failed!");
+                    return new TResponse();
                 }
 
-                byte paddingByte = plainTextPart[dataLen - 1];
-                int paddingSize = paddingByte + 1;
-                int cleanPayloadLen = dataLen - paddingSize;
-                decryptedBytes = new byte[cleanPayloadLen];
-                Array.Copy(plainTextPart, 0, decryptedBytes, 0, cleanPayloadLen);
-            }
-            else if (_securityMode == MessageSecurityMode.Sign)
-            {
-                int sigSize = _securityPolicy.SymmetricSignatureSize;
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _channelCts!.Token);
+                byte[] decryptedBytes = await pending.Tcs.Task.WaitAsync(linkedCts.Token);
 
-                // Structure: [TokenId(4)] [SequenceHeader] [Body] [Signature]
-                // fullBody: [TokenId] + [Rest]
+                using var msRes = new MemoryStream(decryptedBytes);
+                var r = new OpcUaBinaryReader(msRes);
+                r.ReadUInt32(); // SequenceNumber
+                r.ReadUInt32(); // RequestId
+                NodeId typeId = NodeId.Decode(r);
 
-                int dataLen = totalBodyLen - 4 - sigSize; // Length of Sequence + Body
-                if (dataLen < 0) throw new Exception("Message too short for signature.");
-
-                byte[] signature = new byte[sigSize];
-                Array.Copy(fullBody, 4 + dataLen, signature, 0, sigSize);
-
-                // Verify: [BaseHeader(8)] + [ChannelId(4)] + [TokenId(4)] + [Sequence+Body]
-                int signedDataLen = 8 + 4 + 4 + dataLen;
-                byte[] dataToVerify = new byte[signedDataLen];
-                int off = 0;
-                Array.Copy(headerBase, 0, dataToVerify, off, 8); off += 8;
-                Array.Copy(channelIdBuf, 0, dataToVerify, off, 4); off += 4;
-                // TokenId + Data
-                Array.Copy(fullBody, 0, dataToVerify, off, 4 + dataLen);
-
-                if (!_securityPolicy.VerifySymmetric(dataToVerify, signature))
+                if (typeId.NumericIdentifier == 397)
                 {
-                    throw new Exception("Symmetric Signature Verification Failed!");
+                    var fault = ResponseHeader.Decode(r);
+                    throw new Exception($"Server returned ServiceFault: 0x{fault.ServiceResult:X8}");
                 }
 
-                // Payload (Sequence + Body)
-                decryptedBytes = new byte[dataLen];
-                Array.Copy(fullBody, 4, decryptedBytes, 0, dataLen);
-            }
-            else
-            {
-                // None: [TokenId] [Sequence] [Body]
-                int restLen = totalBodyLen - 4;
-                decryptedBytes = new byte[restLen];
-                Array.Copy(fullBody, 4, decryptedBytes, 0, restLen);
-            }
+                var response = new TResponse();
+                if (response is ReadResponse resRr) resRr.Decode(r);
+                else if (response is WriteResponse resWr) resWr.Decode(r);
+                else if (response is BrowseResponse resBr) resBr.Decode(r);
+                else if (response is CreateSubscriptionResponse resCsr) resCsr.Decode(r);
+                else if (response is CreateMonitoredItemsResponse resCmir) resCmir.Decode(r);
+                else if (response is PublishResponse resPr) resPr.Decode(r);
+                else if (response is ActivateSessionResponse resAsr) resAsr.Decode(r);
+                else if (response is CreateSessionResponse resCsr2) resCsr2.Decode(r);
+                else if (response is CloseSessionResponse resCsr3) resCsr3.Decode(r);
+                else if (response is OpenSecureChannelResponse resOsc) resOsc.Decode(r);
+                else if (response is GetEndpointsResponse resGer) resGer.Decode(r);
+                else if (response is CloseSecureChannelResponse resCscr) resCscr.Decode(r);
+                else if (response is CallResponse resCr) resCr.Decode(r);
+                else if (response is BrowseNextResponse resBnr) resBnr.Decode(r);
+                else if (response is DeleteMonitoredItemsResponse resDmir) resDmir.Decode(r);
+                else if (response is DeleteSubscriptionsResponse resDsr) resDsr.Decode(r);
+                else if (response is ModifyMonitoredItemsResponse resMmir) resMmir.Decode(r);
+                else if (response is SetMonitoringModeResponse resSmmr) resSmmr.Decode(r);
+                else if (response is SetPublishingModeResponse resSpmr) resSpmr.Decode(r);
+                else if (response is TranslateBrowsePathsToNodeIdsResponse resTbpt) resTbpt.Decode(r);
+                else throw new NotImplementedException($"Decoding for {typeof(TResponse).Name} not implemented.");
 
-            // 5. Deserialisieren
-            using var ms = new MemoryStream(decryptedBytes);
-            var r = new OpcUaBinaryReader(ms);
-            // Sequence Header
-            uint seqNum = r.ReadUInt32();
-            uint reqId = r.ReadUInt32();
-
-            // Body TypeId (NodeId)
-            NodeId typeId = NodeId.Decode(r);
-
-            // --- GLOBAL SERVICE FAULT CHECK ---
-            // ID 397 = ServiceFault
-            if (typeId.NumericIdentifier == 397)
-            {
-                var faultHeader = ResponseHeader.Decode(r);
-
-                throw new Exception($"Server returned ServiceFault: 0x{faultHeader.ServiceResult:X8}");
+                return response;
             }
-            // ------------------------------------
-
-            var response = new TResponse();
-
-            if (response is GetEndpointsResponse ger)
+            catch
             {
-                if (typeId.NumericIdentifier != GetEndpointsResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for GetEndpoints: {typeId.NumericIdentifier}");
-                ger.Decode(r);
+                _pendingRequests.TryRemove(handle, out _);
+                throw;
             }
-            else if (response is CreateSessionResponse csr)
-            {
-                if (typeId.NumericIdentifier != CreateSessionResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for CreateSession: {typeId.NumericIdentifier}");
-                csr.Decode(r);
-            }
-            else if (response is ActivateSessionResponse asr)
-            {
-                if (typeId.NumericIdentifier != ActivateSessionResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for ActivateSession: {typeId.NumericIdentifier}");
-                asr.Decode(r);
-            }
-            else if (response is ReadResponse rr)
-            {
-                if (typeId.NumericIdentifier != ReadResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for ReadResponse: {typeId.NumericIdentifier}");
-                rr.Decode(r);
-            }
-            else if (response is WriteResponse wr)
-            {
-                if (typeId.NumericIdentifier != WriteResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for WriteResponse: {typeId.NumericIdentifier}");
-                wr.Decode(r);
-            }
-            else if (response is BrowseResponse br)
-            {
-                if (typeId.NumericIdentifier != BrowseResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for BrowseResponse: {typeId.NumericIdentifier}");
-                br.Decode(r);
-            }
-            else if (response is CreateSubscriptionResponse csr2)
-            {
-                if (typeId.NumericIdentifier != CreateSubscriptionResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for CreateSubscriptionResponse: {typeId.NumericIdentifier}");
-                csr2.Decode(r);
-            }
-            else if (response is CreateMonitoredItemsResponse cmir)
-            {
-                if (typeId.NumericIdentifier != CreateMonitoredItemsResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for CreateMonitoredItemResponse: {typeId.NumericIdentifier}");
-                cmir.Decode(r);
-            }
-            else if (response is PublishResponse pr)
-            {
-                if (typeId.NumericIdentifier != PublishResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for PublishResponse: {typeId.NumericIdentifier}");
-                pr.Decode(r);
-            }
-            else if (response is CloseSessionResponse csr3)
-            {
-                if (typeId.NumericIdentifier != CloseSessionResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for CloseSessionResponse: {typeId.NumericIdentifier}");
-                csr3.Decode(r);
-            }
-            else if (response is CloseSecureChannelResponse cscr)
-            {
-                if (typeId.NumericIdentifier != CloseSecureChannelResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for CloseSecureChannelResponse: {typeId.NumericIdentifier}");
-                cscr.Decode(r);
-            }
-            else if (response is CallResponse cr)
-            {
-                if (typeId.NumericIdentifier != CallResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for CallResponse: {typeId.NumericIdentifier}");
-                cr.Decode(r);
-            }
-            else if (response is BrowseNextResponse bnr)
-            {
-                if (typeId.NumericIdentifier != BrowseNextResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for BrowseNextResponse: {typeId.NumericIdentifier}");
-                bnr.Decode(r);
-            }
-            else if (response is DeleteMonitoredItemsResponse dmir)
-            {
-                if (typeId.NumericIdentifier != DeleteMonitoredItemsResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for DeleteMonitoredItemsResponse: {typeId.NumericIdentifier}");
-                dmir.Decode(r);
-            }
-            else if (response is DeleteSubscriptionsResponse dsr)
-            {
-                if (typeId.NumericIdentifier != DeleteSubscriptionsResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for DeleteSubscriptionsResponse: {typeId.NumericIdentifier}");
-                dsr.Decode(r);
-            }
-            else if (response is SetMonitoringModeResponse smmr)
-            {
-                if (typeId.NumericIdentifier != SetMonitoringModeResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for SetMonitoringModeResponse: {typeId.NumericIdentifier}");
-                smmr.Decode(r);
-            }
-            else if (response is SetPublishingModeResponse spmr)
-            {
-                if (typeId.NumericIdentifier != SetPublishingModeResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for SetPublishingModeResponse: {typeId.NumericIdentifier}");
-                spmr.Decode(r);
-            }
-            else if (response is ModifyMonitoredItemsResponse mmir)
-            {
-                if (typeId.NumericIdentifier != ModifyMonitoredItemsResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for ModifyMonitoredItemsResponse: {typeId.NumericIdentifier}");
-                mmir.Decode(r);
-            }
-            else if (response is TranslateBrowsePathsToNodeIdsResponse tbptnir)
-            {
-                if (typeId.NumericIdentifier != TranslateBrowsePathsToNodeIdsResponse.NodeId.NumericIdentifier)
-                    throw new Exception($"Unexpected Response Type for TranslateBrowsePathsToNodeIdsResponse: {typeId.NumericIdentifier}");
-                tbptnir.Decode(r);
-            }
-            else
-            {
-                throw new NotImplementedException($"Response decoding for {typeof(TResponse).Name} not implemented.");
-            }
-
-            return response;
         }
 
         public async Task<StatusCode[]?> DeleteMonitoredItemsAsync(uint subscriptionId, uint[] monitoredItemIds, CancellationToken token = default)
