@@ -42,7 +42,9 @@ namespace LiteUa.Tests.UnitTests.Transport
                 _policyFactoryMock.Object,
                 mode,
                 null,
-                null);
+                null,
+                20000,
+                10000);
 
             // Assert
             Assert.NotNull(channel);
@@ -67,7 +69,9 @@ namespace LiteUa.Tests.UnitTests.Transport
                 policyMock.Object,
                 MessageSecurityMode.None,
                 null,
-                null));
+                null,
+                20000,
+                10000));
         }
 
         [Fact]
@@ -82,7 +86,9 @@ namespace LiteUa.Tests.UnitTests.Transport
                 null!,
                 MessageSecurityMode.None,
                 null,
-                null));
+                null,
+                20000,
+                10000));
         }
 
         [Fact]
@@ -101,7 +107,9 @@ namespace LiteUa.Tests.UnitTests.Transport
                 _policyFactoryMock.Object,
                 MessageSecurityMode.SignAndEncrypt,
                 clientCert,
-                serverCert);
+                serverCert,
+                20000,
+                10000);
 
             // Assert
             Assert.NotNull(channel);

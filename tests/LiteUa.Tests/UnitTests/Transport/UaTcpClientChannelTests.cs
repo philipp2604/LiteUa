@@ -43,7 +43,7 @@ namespace LiteUa.Tests.UnitTests.Transport
             _securityPolicyMock.Setup(p => p.DecryptSymmetric(It.IsAny<byte[]>())).Returns<byte[]>(d => d);
             _securityPolicyMock.Setup(p => p.EncryptAsymmetric(It.IsAny<byte[]>())).Returns<byte[]>(d => d);
             _securityPolicyMock.Setup(p => p.EncryptSymmetric(It.IsAny<byte[]>())).Returns<byte[]>(d => d);
-            _securityPolicyMock.Setup(p => p.Sign(It.IsAny<byte[]>())).Returns(Array.Empty<byte>());
+            _securityPolicyMock.Setup(p => p.Sign(It.IsAny<byte[]>())).Returns([]);
             _policyFactoryMock.Setup(f => f.CreateSecurityPolicy(It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>())).Returns(_securityPolicyMock.Object);
         }
 
@@ -82,8 +82,8 @@ namespace LiteUa.Tests.UnitTests.Transport
 
     internal class SimulatedSocketStream : Stream
     {
-        private readonly BlockingCollection<byte[]> _toSutQueue = new();
-        private readonly BlockingCollection<byte[]> _fromSutQueue = new();
+        private readonly BlockingCollection<byte[]> _toSutQueue = [];
+        private readonly BlockingCollection<byte[]> _fromSutQueue = [];
         private byte[]? _toSutBuf; int _toSutPos;
         private byte[]? _fromSutBuf; int _fromSutPos;
 
@@ -94,7 +94,7 @@ namespace LiteUa.Tests.UnitTests.Transport
         {
             while (_toSutBuf == null || _toSutPos >= _toSutBuf.Length)
             {
-                if (!_toSutQueue.TryTake(out _toSutBuf, 5000)) throw new TimeoutException("SUT Read Timeout");
+                if (!_toSutQueue.TryTake(out _toSutBuf, 5000, ct)) throw new TimeoutException("SUT Read Timeout");
                 _toSutPos = 0;
             }
             int len = Math.Min(buffer.Length, _toSutBuf.Length - _toSutPos);
@@ -106,7 +106,7 @@ namespace LiteUa.Tests.UnitTests.Transport
         // SUT calls this
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
         {
-            _fromSutQueue.Add(buffer.ToArray());
+            _fromSutQueue.Add(buffer.ToArray(), ct);
             return ValueTask.CompletedTask;
         }
 
@@ -151,7 +151,7 @@ namespace LiteUa.Tests.UnitTests.Transport
     }
 
     internal class TestableUaTcpClientChannel(string u, string a, string p, string n, ISecurityPolicyFactory f)
-        : UaTcpClientChannel(u, a, p, n, f, MessageSecurityMode.None, null, null)
+        : UaTcpClientChannel(u, a, p, n, f, MessageSecurityMode.None, null, null, 20000, 10000)
     {
         public SimulatedSocketStream ServerStream { get; } = new();
         protected override Task<Stream> CreateStreamAsync(string h, int p, CancellationToken ct) => Task.FromResult<Stream>(ServerStream);

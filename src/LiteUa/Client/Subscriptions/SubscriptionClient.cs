@@ -29,6 +29,11 @@ namespace LiteUa.Client.Subscriptions
         private readonly IUaTcpClientChannelFactory _clientChannelFactory;
         private readonly int _supervisorIntervalMs;
         private readonly int _reconnectIntervalMs;
+        private readonly uint _heartbeatIntervalMs;
+        private readonly uint _heartbeatTimeoutHintMs;
+        private readonly uint _maxPublishRequests;
+        private readonly double _publishTimeoutMultiplier;
+        private readonly uint _minPublishTimeout;
 
         // Runtime State
         private IUaTcpClientChannel? _channel;
@@ -73,6 +78,11 @@ namespace LiteUa.Client.Subscriptions
         /// <param name="securityMode">The message security mode to use.</param>
         /// <param name="clientCertificate">Optional: The client's certificate.</param>
         /// <param name="serverCertificate">Optional: The server's certificate.</param>
+        /// <param name="heartbeatIntervalMs"">The heartbeat interval in milliseconds.</param>
+        /// <param name="heartbeatTimeoutHintMs">The heartbeat timeout hint in milliseconds.</param>
+        /// <param name="maxPublishRequests">The maximum number of concurrent publish requests.</param>
+        /// <param name="publishTimeoutMultiplier">The multiplier for calculating publish timeouts.</param>
+        /// <param name="minPublishTimeout">The minimum publish timeout in milliseconds.</param>
         /// <param name="clientChannelFactory">An instance of <see cref="IUaTcpClientChannelFactory"/>.</param>
         /// <param name="supervisorIntervalMs">The interval in milliseconds for the supervisor loop to check connection status.</param>
         /// <param name="reconnectIntervalMs">The interval in milliseconds to wait before attempting to reconnect after a disconnection.</param>
@@ -86,6 +96,11 @@ namespace LiteUa.Client.Subscriptions
             MessageSecurityMode securityMode,
             X509Certificate2? clientCertificate,
             X509Certificate2? serverCertificate,
+            uint heartbeatIntervalMs,
+            uint heartbeatTimeoutHintMs,
+            uint maxPublishRequests,
+            double publishTimeoutMultiplier,
+            uint minPublishTimeout,
             IUaTcpClientChannelFactory clientChannelFactory,
             int supervisorIntervalMs = 1000,
             int reconnectIntervalMs = 5000)
@@ -107,9 +122,14 @@ namespace LiteUa.Client.Subscriptions
             _securityMode = securityMode;
             _clientCert = clientCertificate;
             _serverCert = serverCertificate;
+            _heartbeatIntervalMs = heartbeatIntervalMs;
+            _heartbeatTimeoutHintMs = heartbeatTimeoutHintMs;
             _clientChannelFactory = clientChannelFactory;
             _reconnectIntervalMs = reconnectIntervalMs;
             _supervisorIntervalMs = supervisorIntervalMs;
+            _maxPublishRequests = maxPublishRequests;
+            _publishTimeoutMultiplier = publishTimeoutMultiplier;
+            _minPublishTimeout = minPublishTimeout;
         }
 
         public void Start()
@@ -131,7 +151,7 @@ namespace LiteUa.Client.Subscriptions
                     handles[i] = _nextClientHandle++;
             }
 
-            var bucket = _buckets.GetOrAdd(publishingInterval, interval => new SubscriptionBucket(interval));
+            var bucket = _buckets.GetOrAdd(publishingInterval, interval => new SubscriptionBucket(interval, _maxPublishRequests, _publishTimeoutMultiplier, _minPublishTimeout));
 
             for (int i = 0; i < nodeIds.Length; i++)
             {
@@ -213,7 +233,7 @@ namespace LiteUa.Client.Subscriptions
             foreach (var bucket in _buckets.Values) bucket.ClearLiveReference();
 
             // create new channel
-            _channel = _clientChannelFactory.CreateTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert);
+            _channel = _clientChannelFactory.CreateTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert, _heartbeatIntervalMs, _heartbeatTimeoutHintMs);
             await _channel.ConnectAsync();
             await _channel.CreateSessionAsync("SubscriptionMonitoringSession");
             await _channel.ActivateSessionAsync(_userIdentity);
@@ -250,11 +270,14 @@ namespace LiteUa.Client.Subscriptions
             GC.SuppressFinalize(this);
         }
 
-        private class SubscriptionBucket(double interval) : IAsyncDisposable
+        private class SubscriptionBucket(double interval, uint maxPublishRequests, double publishTimeoutMultiplier, uint minPublishTimeout) : IAsyncDisposable
         {
             public double Interval { get; } = interval; public Subscription? LiveSubscription { get; private set; }
             private readonly Dictionary<uint, NodeId> _items = [];
             private readonly SemaphoreSlim _asyncLock = new(1, 1);
+            private readonly uint _maxPublishRequests = maxPublishRequests;
+            private readonly double _publishTimeoutMultiplier = publishTimeoutMultiplier;
+            private readonly uint _minPublishTimeout = minPublishTimeout;
 
             public void ClearLiveReference()
             {
@@ -267,7 +290,7 @@ namespace LiteUa.Client.Subscriptions
                 Action<Exception> errCb)
             {
                 if (LiveSubscription != null) return;
-                var sub = new Subscription(channel);
+                var sub = new Subscription(channel, _maxPublishRequests, _publishTimeoutMultiplier, _minPublishTimeout);
                 sub.DataChanged += cb;
                 sub.ConnectionLost += errCb;
                 await sub.CreateAsync(Interval);

@@ -53,6 +53,12 @@ namespace LiteUa.Client.Building
             return this;
         }
 
+        public UaClientBuilder WithTransportLimits(Action<UaClientOptions.TransportLimits> configure)
+        {
+            configure(_options.Limits);
+            return this;
+        }
+
         /// <summary>
         /// Creates and returns a new instance of the UaClient class using the configured options.
         /// </summary>

@@ -21,7 +21,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
         {
             _channelMock = new Mock<IUaTcpClientChannel>();
             _channelMock.Setup(c => c.CreateRequestHeader()).Returns(new RequestHeader());
-            _sut = new LiteUa.Stack.Subscription.Subscription(_channelMock.Object);
+            _sut = new LiteUa.Stack.Subscription.Subscription(_channelMock.Object, 3, 2.0, 10000);
         }
 
         [Fact]
@@ -157,7 +157,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
 
             // Assert
             var ex = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(2));
-            Assert.Contains("terminated by Server", ex.Message);
+            Assert.Contains("Server reported Bad status for subscription", ex.Message);
         }
 
         [Fact]

@@ -36,7 +36,7 @@ namespace LiteUa.Tests.UnitTests.Client
             var result = _factory.CreateSubscriptionClient(
                 "opc.tcp://localhost:4840", "uri", "prod", "app",
                 _userIdentityMock.Object, _policyFactoryMock.Object,
-                MessageSecurityMode.None, null, null, _channelFactoryMock.Object);
+                MessageSecurityMode.None, null, null, 20000, 10000, 3, 2.0, 10000, _channelFactoryMock.Object);
 
             // Assert
             Assert.NotNull(result);
@@ -48,7 +48,7 @@ namespace LiteUa.Tests.UnitTests.Client
         {
             // Act
             var result = _factory.CreateDiscoveryClient(
-                "opc.tcp://localhost:4840", "uri", "prod", "app",
+                "opc.tcp://localhost:4840", "uri", "prod", "app", 20000, 10000,
                 _channelFactoryMock.Object);
 
             // Assert
@@ -63,7 +63,7 @@ namespace LiteUa.Tests.UnitTests.Client
             var result = _factory.CreateUaClientPool(
                 "opc.tcp://localhost:4840", "uri", "prod", "app",
                 _userIdentityMock.Object, _policyFactoryMock.Object,
-                MessageSecurityMode.None, null, null, 10, _channelFactoryMock.Object);
+                MessageSecurityMode.None, null, null, 10, 20000, 10000, _channelFactoryMock.Object);
 
             // Assert
             Assert.NotNull(result);
@@ -75,7 +75,7 @@ namespace LiteUa.Tests.UnitTests.Client
         {
             // Act & Assert
             Assert.Throws<ArgumentException>(() =>
-                _factory.CreateDiscoveryClient("", "uri", "prod", "app", _channelFactoryMock.Object));
+                _factory.CreateDiscoveryClient("", "uri", "prod", "app", 20000, 10000, _channelFactoryMock.Object));
         }
 
         [Fact]
@@ -84,7 +84,7 @@ namespace LiteUa.Tests.UnitTests.Client
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() =>
                 _factory.CreateUaClientPool("url", "uri", "prod", "app",
-                null!, _policyFactoryMock.Object, MessageSecurityMode.None, null, null, 1, _channelFactoryMock.Object));
+                null!, _policyFactoryMock.Object, MessageSecurityMode.None, null, null, 1, 20000, 10000, _channelFactoryMock.Object));
         }
     }
 }

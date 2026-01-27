@@ -51,6 +51,11 @@ namespace LiteUa.Transport
 
         // --- Renewal Management ---
         private CancellationTokenSource? _renewCts;
+        private readonly uint _heartbeatIntervalMs;
+        private readonly NodeId _heartbeatNodeId = new(2258);
+        private readonly uint _heartbeatTimeoutHintMs;
+        private CancellationTokenSource? _heartbeatCts;
+        private Task? _heartbeatTask;
 
         private Task? _renewTask;
 
@@ -84,6 +89,8 @@ namespace LiteUa.Transport
         /// <param name="securityMode">The message security mode (None, Sign, or SignAndEncrypt) to apply to the channel.</param>
         /// <param name="clientCertificate">The X.509 certificate of the client, used for signing and decryption.</param>
         /// <param name="serverCertificate">The X.509 certificate of the server, used for encryption and signature verification.</param>
+        /// <param name="heartbeatIntervalMs"">The interval in milliseconds for sending heartbeat messages to keep the connection alive.</param>
+        /// <param name="heartbeatTimeoutHintMs">The timeout hint in milliseconds for heartbeat responses.</param>
         /// <exception cref="ArgumentNullException">Thrown if <paramref name="endpointUrl"/>, <paramref name="applicationUri"/>, <paramref name="productUri"/>, <paramref name="applicationName"/>, or <paramref name="policyFactory"/> is null.</exception>
         /// <exception cref="ArgumentException">Thrown if the string parameters are empty or consist only of white space.</exception>
         public UaTcpClientChannel(
@@ -94,7 +101,9 @@ namespace LiteUa.Transport
             ISecurityPolicyFactory policyFactory,
             MessageSecurityMode securityMode,
             X509Certificate2? clientCertificate,
-            X509Certificate2? serverCertificate)
+            X509Certificate2? serverCertificate,
+            uint heartbeatIntervalMs,
+            uint heartbeatTimeoutHintMs)
         {
             ArgumentNullException.ThrowIfNullOrWhiteSpace(endpointUrl);
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationUri);
@@ -115,6 +124,8 @@ namespace LiteUa.Transport
             _clientNonce = new byte[32];
             using var rng = RandomNumberGenerator.Create();
             rng.GetBytes(_clientNonce);
+            _heartbeatIntervalMs = heartbeatIntervalMs;
+            _heartbeatTimeoutHintMs = heartbeatTimeoutHintMs;
         }
 
         private async Task ProcessResponsesAsync()
@@ -443,6 +454,18 @@ namespace LiteUa.Transport
 
             _isClosing = true;
 
+            _heartbeatCts?.Cancel();
+            _renewCts?.Cancel();
+            _channelCts?.Cancel();
+
+            try
+            {
+                if (_heartbeatTask != null) await _heartbeatTask;
+                if (_renewTask != null) await _renewTask;
+                if (_responseProcessorTask != null) await _responseProcessorTask;
+            }
+            catch (Exception) { /* Ignore cancellations/shutdown errors */ }
+
             try
             {
                 if (_authenticationToken != null && _authenticationToken.NumericIdentifier != 0)
@@ -474,8 +497,6 @@ namespace LiteUa.Transport
                 // Best effort shutdown
             }
 
-            _channelCts?.Cancel();
-
             if (_responseProcessorTask != null)
             {
                 try { await _responseProcessorTask; } catch { }
@@ -487,7 +508,11 @@ namespace LiteUa.Transport
             _stream = null;
             _client = null;
             _channelCts?.Dispose();
+            _heartbeatCts?.Dispose();
+            _renewCts?.Dispose();
             _channelCts = null;
+            _heartbeatCts = null;
+            _renewCts = null;
         }
 
         private byte[] PrepareOpenSecureChannelPacket(byte[] bodyBytes, uint requestId, uint sequenceNumber)
@@ -722,6 +747,39 @@ namespace LiteUa.Transport
 
             if (response.ServerNonce != null && response.ServerNonce.Length > 0)
                 _sessionServerNonce = response.ServerNonce;
+
+            StartHeartbeat();
+        }
+
+        private void StartHeartbeat()
+        {
+            _heartbeatCts?.Cancel();
+            _heartbeatCts = new CancellationTokenSource();
+
+            _heartbeatTask = Task.Run(async () =>
+            {
+                var token = _heartbeatCts.Token;
+                try
+                {
+                    while (!token.IsCancellationRequested)
+                    {
+                        await Task.Delay((int)_heartbeatIntervalMs, token);
+
+                        if (_authenticationToken != null && _authenticationToken.NumericIdentifier != 0 && !_isClosing)
+                        {
+                            var readReq = new ReadRequest
+                            {
+                                RequestHeader = CreateRequestHeader(),
+                                NodesToRead = [new ReadValueId(_heartbeatNodeId) { AttributeId = 13 }]
+                            };
+                            readReq.RequestHeader.TimeoutHint = (uint)_heartbeatTimeoutHintMs;
+
+                            await SendRequestAsync<ReadRequest, ReadResponse>(readReq, token);
+                        }
+                    }
+                }
+                catch (OperationCanceledException) { }
+            }, _heartbeatCts.Token);
         }
 
         public async Task<DataValue[]?> ReadAsync(NodeId[] nodesToRead, CancellationToken cancellationToken = default)

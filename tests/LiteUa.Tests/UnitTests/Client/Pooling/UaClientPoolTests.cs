@@ -32,13 +32,13 @@ namespace LiteUa.Tests.UnitTests.Client.Pooling
             _factoryMock.Setup(f => f.CreateTcpClientChannel(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(),
-                It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>()))
+                It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>(), It.IsAny<uint>(), It.IsAny<uint>()))
                 .Returns(_channelMock.Object);
 
             _pool = new UaClientPool(
                 "opc.tcp://localhost:4840", "uri", "prod", "app",
                 _userMock.Object, _policyMock.Object, MessageSecurityMode.None,
-                null, null, 2, _factoryMock.Object); // Max size 2
+                null, null, 2, 20000, 10000, _factoryMock.Object); // Max size 2
         }
 
         [Fact]
@@ -76,7 +76,7 @@ namespace LiteUa.Tests.UnitTests.Client.Pooling
             // Factory should only have been called once
             _factoryMock.Verify(f => f.CreateTcpClientChannel(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(),
-                It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>()), Times.Once);
+                It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>(), It.IsAny<uint>(), It.IsAny<uint>()), Times.Once);
         }
 
         [Fact]
@@ -96,7 +96,7 @@ namespace LiteUa.Tests.UnitTests.Client.Pooling
             await _pool.RentAsync();
             _factoryMock.Verify(f => f.CreateTcpClientChannel(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(),
-                It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>()), Times.Exactly(2));
+                It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>(), It.IsAny<uint>(), It.IsAny<uint>()), Times.Exactly(2));
         }
 
         [Fact]
@@ -105,7 +105,7 @@ namespace LiteUa.Tests.UnitTests.Client.Pooling
             // Arrange
             _factoryMock.Setup(f => f.CreateTcpClientChannel(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(),
-                It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>()))
+                It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>(), It.IsAny<uint>(), It.IsAny<uint>()))
                 .Throws(new Exception("Connection Failed"));
 
             // Act & Assert

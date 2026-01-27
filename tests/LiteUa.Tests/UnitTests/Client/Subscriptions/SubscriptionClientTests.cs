@@ -54,7 +54,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
                 });
 
             _factoryMock.Setup(f => f.CreateTcpClientChannel(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(), It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>()))
+                It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(), It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>(), It.IsAny<uint>(), It.IsAny<uint>()))
                 .Returns(_channelMock.Object);
         }
 
@@ -63,7 +63,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
             return new SubscriptionClient(
                 "opc.tcp://localhost:4840", "urn:test:client", "urn:test:prod", "TestApp",
                 _userIdentityMock.Object, _policyMock.Object, MessageSecurityMode.None,
-                null, null, _factoryMock.Object, supervisorMs, reconnectMs);
+                null, null, 20000, 10000, 3, 2.0, 10000, _factoryMock.Object, supervisorMs, reconnectMs);
         }
 
         [Fact]

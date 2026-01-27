@@ -29,10 +29,10 @@ namespace LiteUa.Tests.UnitTests.Client.Discovery
             _channelMock = new Mock<IUaTcpClientChannel>();
 
             _factoryMock.Setup(f => f.CreateTcpClientChannel(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                                           It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(), null, null))
+                                           It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(), null, null, It.IsAny<uint>(), It.IsAny<uint>()))
                         .Returns(_channelMock.Object);
 
-            _sut = new DiscoveryClient(TestUrl, AppUri, ProdUri, AppName, _factoryMock.Object);
+            _sut = new DiscoveryClient(TestUrl, AppUri, ProdUri, AppName, 20000, 10000, _factoryMock.Object);
         }
 
         [Fact]
