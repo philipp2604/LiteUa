@@ -189,7 +189,7 @@ namespace LiteUa.Stack.Subscription
 
         private async Task SendPublishRequestInternalAsync()
         {
-            SubscriptionAcknowledgement[] acksInThisRequest = _unacknowledgedSequences.Values.ToArray();
+            SubscriptionAcknowledgement[] acksInThisRequest = [.. _unacknowledgedSequences.Values];
 
             var req = new PublishRequest
             {

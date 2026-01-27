@@ -144,8 +144,8 @@ namespace LiteUa.Tests.UnitTests.Transport
         public override long Length => 0;
         public override long Position { get; set; }
         public override void Flush() { }
-        public override int Read(byte[] b, int o, int c) => ReadAsync(b.AsMemory(o, c)).GetAwaiter().GetResult();
-        public override void Write(byte[] b, int o, int c) => WriteAsync(b.AsMemory(o, c)).GetAwaiter().GetResult();
+        public override int Read(byte[] b, int o, int c) => ReadAsync(b.AsMemory(o, c)).AsTask().GetAwaiter().GetResult();
+        public override void Write(byte[] b, int o, int c) => WriteAsync(b.AsMemory(o, c)).AsTask().GetAwaiter().GetResult();
         public override long Seek(long o, SeekOrigin r) => 0;
         public override void SetLength(long v) { }
     }
