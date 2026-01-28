@@ -8,10 +8,7 @@ using LiteUa.Stack.Subscription.MonitoredItem;
 using LiteUa.Transport;
 using LiteUa.Transport.Headers;
 using Moq;
-using System;
-using System.Collections.Generic;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Client.Subscriptions
 {
@@ -175,7 +172,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
 
             await Task.Delay(100); // Wait for restoration
 
-            // Assert: 
+            // Assert:
             // 1. Old channel disposed
             _channelMock.Verify(c => c.DisposeAsync(), Times.AtLeastOnce);
             // 2. New channel setup

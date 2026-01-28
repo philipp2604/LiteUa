@@ -1,24 +1,12 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Encoding;
-using LiteUa.Security;
 using LiteUa.Security.Policies;
-using LiteUa.Stack.Attribute;
 using LiteUa.Stack.SecureChannel;
-using LiteUa.Stack.Session;
-using LiteUa.Stack.View;
 using LiteUa.Transport;
-using LiteUa.Transport.Headers;
 using Moq;
-using System;
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO.Pipelines;
-using System.Net;
-using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Transport
 {
@@ -66,7 +54,8 @@ namespace LiteUa.Tests.UnitTests.Transport
                 // 3. Read
                 var readReq = await sut.ServerStream.ReadPacketFromSutAsync();
                 uint readId = PacketFactory.ExtractId(readReq, false);
-                sut.ServerStream.EnqueueToSut(PacketFactory.CreateServiceResponse(634, readId, w => {
+                sut.ServerStream.EnqueueToSut(PacketFactory.CreateServiceResponse(634, readId, w =>
+                {
                     w.WriteInt32(1); w.WriteByte(1); w.WriteByte(6); w.WriteInt32(42);
                 }));
             });
@@ -84,8 +73,8 @@ namespace LiteUa.Tests.UnitTests.Transport
     {
         private readonly BlockingCollection<byte[]> _toSutQueue = [];
         private readonly BlockingCollection<byte[]> _fromSutQueue = [];
-        private byte[]? _toSutBuf; int _toSutPos;
-        private byte[]? _fromSutBuf; int _fromSutPos;
+        private byte[]? _toSutBuf; private int _toSutPos;
+        private byte[]? _fromSutBuf; private int _fromSutPos;
 
         public void EnqueueToSut(byte[] data) => _toSutQueue.Add(data);
 
@@ -143,17 +132,25 @@ namespace LiteUa.Tests.UnitTests.Transport
         public override bool CanSeek => false;
         public override long Length => 0;
         public override long Position { get; set; }
-        public override void Flush() { }
+
+        public override void Flush()
+        { }
+
         public override int Read(byte[] b, int o, int c) => ReadAsync(b.AsMemory(o, c)).AsTask().GetAwaiter().GetResult();
+
         public override void Write(byte[] b, int o, int c) => WriteAsync(b.AsMemory(o, c)).AsTask().GetAwaiter().GetResult();
+
         public override long Seek(long o, SeekOrigin r) => 0;
-        public override void SetLength(long v) { }
+
+        public override void SetLength(long v)
+        { }
     }
 
     internal class TestableUaTcpClientChannel(string u, string a, string p, string n, ISecurityPolicyFactory f)
         : UaTcpClientChannel(u, a, p, n, f, MessageSecurityMode.None, null, null, 20000, 10000)
     {
         public SimulatedSocketStream ServerStream { get; } = new();
+
         protected override Task<Stream> CreateStreamAsync(string h, int p, CancellationToken ct) => Task.FromResult<Stream>(ServerStream);
     }
 

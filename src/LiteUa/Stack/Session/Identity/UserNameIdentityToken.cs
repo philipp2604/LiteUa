@@ -6,7 +6,6 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace LiteUa.Stack.Session.Identity
 {
-
     /// TODO: Implement different encryption algorithms based on security policy
 
     /// <summary>

@@ -1,9 +1,6 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Stack.View;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.View
 {
@@ -106,14 +103,16 @@ namespace LiteUa.Tests.UnitTests.Stack.View
             // Arrange
             var callOrder = new List<string>();
 
-            _readerMock.Setup(r => r.ReadDateTime()).Returns(() => {
+            _readerMock.Setup(r => r.ReadDateTime()).Returns(() =>
+            {
                 callOrder.Add("HeaderTime");
                 return DateTime.MinValue;
             });
 
             _readerMock.SetupSequence(r => r.ReadInt32())
                 .Returns(0) // Header StringTable
-                .Returns(() => {
+                .Returns(() =>
+                {
                     callOrder.Add("ResultsCount");
                     return 0;
                 });

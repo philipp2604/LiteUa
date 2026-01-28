@@ -1,9 +1,6 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Encoding;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.BuiltIn
 {
@@ -39,7 +36,7 @@ namespace LiteUa.Tests.UnitTests.BuiltIn
             Assert.Null(node.NumericIdentifier);
         }
 
-        #endregion
+        #endregion Constructor & Property Tests
 
         #region Encode Tests
 
@@ -92,7 +89,7 @@ namespace LiteUa.Tests.UnitTests.BuiltIn
             _writerMock.Verify(w => w.WriteString("MachineA"), Times.Once);
         }
 
-        #endregion
+        #endregion Encode Tests
 
         #region Decode Tests
 
@@ -127,7 +124,7 @@ namespace LiteUa.Tests.UnitTests.BuiltIn
             Assert.Equal(100u, result.NumericIdentifier);
         }
 
-        #endregion
+        #endregion Decode Tests
 
         #region Equality Tests
 
@@ -150,7 +147,7 @@ namespace LiteUa.Tests.UnitTests.BuiltIn
             Assert.False(node1.Equals(node2));
         }
 
-        #endregion
+        #endregion Equality Tests
 
         #region ToString Tests
 
@@ -182,9 +179,10 @@ namespace LiteUa.Tests.UnitTests.BuiltIn
             Assert.Contains("i=1", result);
         }
 
-        #endregion
+        #endregion ToString Tests
 
         #region Parsing Tests
+
         [Theory]
         [InlineData("i=2254", 0, 2254u)]
         [InlineData("2254", 0, 2254u)] // Simple numeric fallback
@@ -304,6 +302,7 @@ namespace LiteUa.Tests.UnitTests.BuiltIn
             Assert.Equal(original.StringIdentifier, parsed.StringIdentifier);
             Assert.Equal(original, parsed); // Uses your Equals override
         }
-        #endregion
+
+        #endregion Parsing Tests
     }
 }

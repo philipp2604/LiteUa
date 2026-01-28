@@ -1,9 +1,6 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Transport.Headers;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Transport.Headers
 {
@@ -96,22 +93,26 @@ namespace LiteUa.Tests.UnitTests.Transport.Headers
             // Arrange
             var callOrder = new List<string>();
 
-            _readerMock.Setup(r => r.ReadDateTime()).Returns(() => {
+            _readerMock.Setup(r => r.ReadDateTime()).Returns(() =>
+            {
                 callOrder.Add("Time");
                 return DateTime.MinValue;
             });
 
-            _readerMock.Setup(r => r.ReadUInt32()).Returns(() => {
+            _readerMock.Setup(r => r.ReadUInt32()).Returns(() =>
+            {
                 callOrder.Add("UInt32");
                 return 0u;
             });
 
-            _readerMock.Setup(r => r.ReadByte()).Returns(() => {
+            _readerMock.Setup(r => r.ReadByte()).Returns(() =>
+            {
                 callOrder.Add("Byte");
                 return 0;
             });
 
-            _readerMock.Setup(r => r.ReadInt32()).Returns(() => {
+            _readerMock.Setup(r => r.ReadInt32()).Returns(() =>
+            {
                 callOrder.Add("Int32");
                 return 0;
             });

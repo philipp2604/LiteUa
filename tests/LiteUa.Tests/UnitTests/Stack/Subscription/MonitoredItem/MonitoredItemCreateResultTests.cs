@@ -1,9 +1,6 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Stack.Subscription.MonitoredItem;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Subscription.MonitoredItem
 {
@@ -54,7 +51,6 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription.MonitoredItem
                 .Returns(10u)          // MonitoredItemId
                 .Returns(90u);         // RevisedQueueSize
 
-
             // Act
             var result = MonitoredItemCreateResult.Decode(_readerMock.Object);
 
@@ -70,17 +66,20 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription.MonitoredItem
             // Arrange
             var callOrder = new List<string>();
 
-            _readerMock.Setup(r => r.ReadUInt32()).Returns(() => {
+            _readerMock.Setup(r => r.ReadUInt32()).Returns(() =>
+            {
                 callOrder.Add("UInt32");
                 return 0u;
             });
 
-            _readerMock.Setup(r => r.ReadDouble()).Returns(() => {
+            _readerMock.Setup(r => r.ReadDouble()).Returns(() =>
+            {
                 callOrder.Add("Double");
                 return 0.0;
             });
 
-            _readerMock.Setup(r => r.ReadByte()).Returns(() => {
+            _readerMock.Setup(r => r.ReadByte()).Returns(() =>
+            {
                 callOrder.Add("Byte");
                 return 0;
             });

@@ -1,9 +1,6 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Encoding;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.BuiltIn
 {

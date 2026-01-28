@@ -1,9 +1,6 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Stack.Subscription;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Subscription
 {
@@ -90,11 +87,13 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
             var callOrder = new List<string>();
 
             _readerMock.SetupSequence(r => r.ReadInt32())
-                .Returns(() => {
+                .Returns(() =>
+                {
                     callOrder.Add("ItemsCount");
                     return 0;
                 })
-                .Returns(() => {
+                .Returns(() =>
+                {
                     callOrder.Add("DiagCount");
                     return 0;
                 });

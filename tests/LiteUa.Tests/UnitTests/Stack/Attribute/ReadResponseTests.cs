@@ -1,9 +1,6 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Stack.Attribute;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Attribute
 {
@@ -28,7 +25,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Attribute
         public void Decode_BasicResponse_SetsProperties()
         {
             // Arrange
-            // 1. ResponseHeader.Decode will consume data. 
+            // 1. ResponseHeader.Decode will consume data.
             _readerMock.SetupSequence(r => r.ReadByte()).Returns(0); // NodeId Type 0
 
             // 2. Results Count = 1
@@ -58,7 +55,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Attribute
             _readerMock.Setup(r => r.Position).Returns(0);
             _readerMock.Setup(r => r.Length).Returns(100);
 
-            // Int32 Sequence: 
+            // Int32 Sequence:
             // 1. Header (string table) = 0
             // 2. Results Count = 2
             // 3. Diag Count = 1

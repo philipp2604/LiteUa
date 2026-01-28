@@ -2,12 +2,9 @@
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Transport;
 using Moq;
-using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Transport
 {

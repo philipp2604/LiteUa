@@ -1,7 +1,4 @@
-﻿using LiteUa.Transport;
-using System.Threading;
-
-namespace LiteUa.Client.Pooling
+﻿namespace LiteUa.Client.Pooling
 {
     /// <summary>
     /// Interface for the UaClientPool.

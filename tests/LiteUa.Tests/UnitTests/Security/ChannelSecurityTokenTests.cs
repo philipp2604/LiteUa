@@ -1,9 +1,6 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Security;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Security
 {

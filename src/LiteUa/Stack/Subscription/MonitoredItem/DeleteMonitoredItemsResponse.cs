@@ -14,7 +14,6 @@ namespace LiteUa.Stack.Subscription.MonitoredItem
         /// </summary>
         public static readonly NodeId NodeId = new(784);
 
-
         /// <summary>
         /// Gets or sets the <see cref="ResponseHeader"/> of the DeleteMonitoredItemsResponse.
         /// </summary>

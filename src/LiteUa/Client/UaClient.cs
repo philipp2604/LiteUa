@@ -1,6 +1,5 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Client.Building;
-using LiteUa.Client.Discovery;
 using LiteUa.Client.Pooling;
 using LiteUa.Client.Subscriptions;
 using LiteUa.Security.Policies;
@@ -45,7 +44,6 @@ namespace LiteUa.Client
             _tcpClientChannelFactory = channelFactory;
             _innerClientsFactory = innerClientsFactory;
 
-
             _policyFactory = options.Security.PolicyType switch
             {
                 SecurityPolicyType.None => new SecurityPolicyFactoryNone(),
@@ -76,7 +74,7 @@ namespace LiteUa.Client
                 _options.Session.ProductUri,
                 _options.Session.ApplicationName,
                 _options.Limits.HeartbeatIntervalMs,
-                _options.Limits .HeartbeatTimeoutHintMs,
+                _options.Limits.HeartbeatTimeoutHintMs,
             _tcpClientChannelFactory);
 
             string policyUri = _options.Security.PolicyType switch

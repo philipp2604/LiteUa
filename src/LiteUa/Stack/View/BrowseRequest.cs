@@ -3,13 +3,12 @@ using LiteUa.Encoding;
 using LiteUa.Transport.Headers;
 
 namespace LiteUa.Stack.View
-{ 
+{
     /// <summary>
     /// Represents a request to browse the references of one or more nodes in an OPC UA server address space.
     /// </summary>
     public class BrowseRequest
     {
-
         /// TODO: Implement ViewDescription
 
         /// <summary>

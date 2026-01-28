@@ -11,7 +11,7 @@ namespace LiteUa.ConsoleApp
     {
         private static UaClient? _client;
 
-        static async Task Main()
+        private static async Task Main()
         {
             Console.WriteLine("=== LiteUa OPC UA Console Client ===");
 
@@ -214,7 +214,7 @@ namespace LiteUa.ConsoleApp
 
         public async ValueTask DisposeAsync()
         {
-            if(_client != null)
+            if (_client != null)
             {
                 await _client.DisposeAsync();
                 _client = null;

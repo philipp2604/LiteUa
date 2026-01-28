@@ -1,8 +1,5 @@
 ﻿using LiteUa.Encoding;
-using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Encoding
 {

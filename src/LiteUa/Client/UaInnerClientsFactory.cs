@@ -5,12 +5,7 @@ using LiteUa.Security.Policies;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
 using LiteUa.Transport;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.Client
 {

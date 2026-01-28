@@ -1,9 +1,6 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Stack.Session;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Session
 {
@@ -127,14 +124,16 @@ namespace LiteUa.Tests.UnitTests.Stack.Session
             _readerMock.Setup(r => r.ReadInt64()).Returns(0);
             _readerMock.Setup(r => r.ReadByte()).Returns(0);
 
-            _readerMock.Setup(r => r.ReadByteString()).Returns(() => {
+            _readerMock.Setup(r => r.ReadByteString()).Returns(() =>
+            {
                 callOrder.Add("Nonce");
                 return null;
             });
 
             _readerMock.SetupSequence(r => r.ReadInt32())
                 .Returns(0) // Header StringTable
-                .Returns(() => {
+                .Returns(() =>
+                {
                     callOrder.Add("ResultsCount");
                     return 0;
                 });

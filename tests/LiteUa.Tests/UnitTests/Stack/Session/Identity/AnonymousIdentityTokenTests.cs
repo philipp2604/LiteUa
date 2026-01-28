@@ -1,9 +1,6 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Stack.Session.Identity;
-using System;
-using System.Collections.Generic;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Session.Identity
 {

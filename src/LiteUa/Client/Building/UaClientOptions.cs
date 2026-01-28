@@ -1,5 +1,4 @@
-﻿using LiteUa.Client.Subscriptions;
-using LiteUa.Security.Policies;
+﻿using LiteUa.Security.Policies;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
 using System.Security.Cryptography.X509Certificates;
@@ -107,7 +106,7 @@ namespace LiteUa.Client.Building
                     await Task.Run(() => ClientCertificate.Dispose());
                     ClientCertificate = null;
                 }
-                if(ServerCertificate != null)
+                if (ServerCertificate != null)
                 {
                     await Task.Run(() => ServerCertificate.Dispose());
                     ServerCertificate = null;

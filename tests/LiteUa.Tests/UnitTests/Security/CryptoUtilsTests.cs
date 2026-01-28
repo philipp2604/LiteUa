@@ -1,8 +1,5 @@
 ﻿using LiteUa.Security;
-using System;
-using System.Collections.Generic;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Security
 {
@@ -94,7 +91,7 @@ namespace LiteUa.Tests.UnitTests.Security
             Assert.Equal(expectedFirstBlock, actualFirstBlock);
         }
 
-        #endregion
+        #endregion PSha256 Tests
 
         #region ParseAlgorithm Tests
 
@@ -118,6 +115,6 @@ namespace LiteUa.Tests.UnitTests.Security
             Assert.Throws<NotSupportedException>(() => CryptoUtils.ParseAlgorithm("http://invalid.uri"));
         }
 
-        #endregion
+        #endregion ParseAlgorithm Tests
     }
 }

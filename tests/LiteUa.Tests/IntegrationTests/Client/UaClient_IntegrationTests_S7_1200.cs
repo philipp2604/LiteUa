@@ -8,7 +8,6 @@ using LiteUa.Stack.Method;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
 using LiteUa.Transport;
-using System.ComponentModel;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Xunit.Abstractions;
@@ -81,7 +80,6 @@ namespace LiteUa.Tests.IntegrationTests.Client
                             tcsInitial.TrySetResult(true);
                         else
                             tcsAfterReconnect.TrySetResult(true);
-
                     }
                 ]);
 
@@ -147,7 +145,6 @@ namespace LiteUa.Tests.IntegrationTests.Client
                             tcsInitial.TrySetResult(true);
                         else
                             tcsAfterReconnect.TrySetResult(true);
-
                     }
                 ]);
 
@@ -213,7 +210,6 @@ namespace LiteUa.Tests.IntegrationTests.Client
                             tcsInitial.TrySetResult(true);
                         else
                             tcsAfterReconnect.TrySetResult(true);
-
                     }
                 ]);
 
@@ -282,7 +278,6 @@ namespace LiteUa.Tests.IntegrationTests.Client
                             tcsInitial.TrySetResult(true);
                         else
                             tcsAfterReconnect.TrySetResult(true);
-
                     }
                 ]);
 
@@ -351,7 +346,6 @@ namespace LiteUa.Tests.IntegrationTests.Client
                             tcsInitial.TrySetResult(true);
                         else
                             tcsAfterReconnect.TrySetResult(true);
-
                     }
                 ]);
 
@@ -420,7 +414,6 @@ namespace LiteUa.Tests.IntegrationTests.Client
                             tcsInitial.TrySetResult(true);
                         else
                             tcsAfterReconnect.TrySetResult(true);
-
                     }
                 ]);
 
@@ -444,7 +437,7 @@ namespace LiteUa.Tests.IntegrationTests.Client
             Assert.True(result2);
         }
 
-        #endregion
+        #endregion Connect, Subscribe and Reconnect tests
 
         #region Connect and Subscribe tests
 

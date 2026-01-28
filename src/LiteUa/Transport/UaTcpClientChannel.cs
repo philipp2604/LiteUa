@@ -42,8 +42,8 @@ namespace LiteUa.Transport
         private int _requestId = 1;
         public uint SecureChannelId = 0; // 0 while disconnected
         private NodeId _authenticationToken = new(0); // Session Token
-        private uint _tokenId; 
-        
+        private uint _tokenId;
+
         private readonly ConcurrentDictionary<uint, PendingRequest> _pendingRequests = new();
         private Task? _responseProcessorTask;
         private CancellationTokenSource? _channelCts;
@@ -51,6 +51,7 @@ namespace LiteUa.Transport
 
         // --- Renewal Management ---
         private CancellationTokenSource? _renewCts;
+
         private readonly uint _heartbeatIntervalMs;
         private readonly NodeId _heartbeatNodeId = new(2258);
         private readonly uint _heartbeatTimeoutHintMs;

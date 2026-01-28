@@ -1,16 +1,4 @@
 ﻿using LiteUa.BuiltIn;
-using LiteUa.Security.Policies;
-using LiteUa.Stack.SecureChannel;
-using LiteUa.Stack.Session.Identity;
-using LiteUa.Stack.Subscription;
-using LiteUa.Transport;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Channels;
-using System.Threading.Tasks;
 
 namespace LiteUa.Client.Subscriptions
 {

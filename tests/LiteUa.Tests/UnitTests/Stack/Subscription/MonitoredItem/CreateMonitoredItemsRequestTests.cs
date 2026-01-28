@@ -2,9 +2,6 @@
 using LiteUa.Stack.Attribute;
 using LiteUa.Stack.Subscription.MonitoredItem;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Subscription.MonitoredItem
 {
@@ -90,7 +87,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription.MonitoredItem
             {
                 SubscriptionId = 9999,
                 TimestampsToReturn = TimestampsToReturn.Neither,
-                ItemsToCreate = [new MonitoredItemCreateRequest(new ReadValueId(new(123)), 456, new())] 
+                ItemsToCreate = [new MonitoredItemCreateRequest(new ReadValueId(new(123)), 456, new())]
             };
 
             var callOrder = new List<string>();

@@ -1,9 +1,6 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Stack.Subscription;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Subscription
 {
@@ -36,7 +33,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
                 .Returns(0)
                 .Returns(2);
             _readerMock.SetupSequence(r => r.ReadUInt32())
-                .Returns(0u) 
+                .Returns(0u)
                 .Returns(0u)
                 .Returns(0u)    // Result[0] (Good)
                 .Returns(0x80280000u); // Result[1] (Bad_SubscriptionIdInvalid)
@@ -110,14 +107,16 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
             // Arrange
             var callOrder = new List<string>();
 
-            _readerMock.Setup(r => r.ReadDateTime()).Returns(() => {
+            _readerMock.Setup(r => r.ReadDateTime()).Returns(() =>
+            {
                 callOrder.Add("HeaderTime");
                 return DateTime.MinValue;
             });
 
             _readerMock.SetupSequence(r => r.ReadInt32())
                 .Returns(0)
-                .Returns(() => {
+                .Returns(() =>
+                {
                     callOrder.Add("ResultsCount");
                     return 0;
                 });

@@ -1,10 +1,7 @@
 ﻿using LiteUa.Security.Policies;
-using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Security.Policies
 {

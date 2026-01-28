@@ -3,9 +3,6 @@ using LiteUa.Encoding;
 using LiteUa.Stack.Discovery;
 using LiteUa.Stack.Session;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Session
 {

@@ -2,9 +2,6 @@
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Transport.Headers;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.SecureChannel
 {

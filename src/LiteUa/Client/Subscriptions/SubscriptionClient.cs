@@ -9,7 +9,6 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace LiteUa.Client.Subscriptions
 {
-
     /// <summary>
     /// Client for managing subscriptions to an OPC UA server, allowing for monitoring of data changes on specified nodes.
     /// </summary>

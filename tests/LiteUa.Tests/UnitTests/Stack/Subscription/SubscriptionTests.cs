@@ -5,9 +5,6 @@ using LiteUa.Stack.Subscription.MonitoredItem;
 using LiteUa.Transport;
 using LiteUa.Transport.Headers;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Subscription
 {

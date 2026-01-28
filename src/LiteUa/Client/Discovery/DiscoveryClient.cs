@@ -54,7 +54,7 @@ namespace LiteUa.Client.Discovery
 
         public async Task<EndpointDescription?> GetEndpoint(MessageSecurityMode targetSecurityMode, string targetPolicyUri, UserTokenType targetTokenType, CancellationToken cancellationToken = default)
         {
-            await using var discovery = _clientChannelFactory.CreateTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName,  _policyFactory, _securityMode, null, null, _heartbeatIntervalMs, _heartbeatTimeoutHintMs);
+            await using var discovery = _clientChannelFactory.CreateTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _policyFactory, _securityMode, null, null, _heartbeatIntervalMs, _heartbeatTimeoutHintMs);
             await discovery.ConnectAsync(cancellationToken);
             var endpoints = await discovery.GetEndpointsAsync(cancellationToken);
 

@@ -1,11 +1,6 @@
 ﻿using LiteUa.Stack.Discovery;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.Client.Discovery
 {

@@ -1,9 +1,6 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Stack.Subscription;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Subscription
 {
@@ -94,24 +91,28 @@ namespace LiteUa.Tests.UnitTests.Stack.Subscription
             // Arrange
             var callOrder = new List<string>();
 
-            _readerMock.Setup(r => r.ReadUInt32()).Returns(() => {
+            _readerMock.Setup(r => r.ReadUInt32()).Returns(() =>
+            {
                 callOrder.Add("SubId");
                 return 1u;
             });
 
             _readerMock.SetupSequence(r => r.ReadInt32())
                 .Returns(0) // Header StringTable
-                .Returns(() => {
+                .Returns(() =>
+                {
                     callOrder.Add("AvailSeqCount");
                     return 0;
                 })
                 .Returns(0) // NotificationMessage Count
-                .Returns(() => {
+                .Returns(() =>
+                {
                     callOrder.Add("ResultsCount");
                     return 0;
                 });
 
-            _readerMock.Setup(r => r.ReadBoolean()).Returns(() => {
+            _readerMock.Setup(r => r.ReadBoolean()).Returns(() =>
+            {
                 callOrder.Add("MoreNotif");
                 return false;
             });

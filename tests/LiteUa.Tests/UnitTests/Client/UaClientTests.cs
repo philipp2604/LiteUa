@@ -10,9 +10,6 @@ using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
 using LiteUa.Transport;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Client
 {
