@@ -1,12 +1,9 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Stack.Session.Identity;
-using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Session.Identity
 {
@@ -81,7 +78,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Session.Identity
             Assert.Equal("UserName", userName);
             Assert.Equal("http://www.w3.org/2001/04/xmlenc#rsa-oaep", algoUri);
 
-            // Act: 
+            // Act:
             using var rsa = _serverCert.GetRSAPrivateKey();
             byte[] decrypted = rsa!.Decrypt(encryptedBlock, RSAEncryptionPadding.OaepSHA1);
 

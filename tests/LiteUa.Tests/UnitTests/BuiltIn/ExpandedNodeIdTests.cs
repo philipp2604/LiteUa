@@ -1,11 +1,8 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Encoding;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace LiteUa.Tests.UnitTests.Client.BuiltIn
+namespace LiteUa.Tests.UnitTests.BuiltIn
 {
     [Trait("Category", "Unit")]
     public class ExpandedNodeIdTests
@@ -78,7 +75,7 @@ namespace LiteUa.Tests.UnitTests.Client.BuiltIn
             if (typeByte == 0x05) _readerMock.Verify(r => r.ReadByteString(), Times.Once);
         }
 
-        #endregion
+        #endregion Decode Tests
 
         #region Encode Tests
 
@@ -168,7 +165,7 @@ namespace LiteUa.Tests.UnitTests.Client.BuiltIn
             Assert.Throws<InvalidOperationException>(() => eni.Encode(_writerMock.Object));
         }
 
-        #endregion
+        #endregion Encode Tests
 
         [Fact]
         public void ToString_ReturnsNodeIdString()

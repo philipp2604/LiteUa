@@ -2,9 +2,6 @@
 using LiteUa.Encoding;
 using LiteUa.Stack.Attribute;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Attribute
 {
@@ -94,7 +91,8 @@ namespace LiteUa.Tests.UnitTests.Stack.Attribute
                        .Callback(() => callOrder.Add("Range"));
 
             _writerMock.Setup(w => w.WriteByte(It.IsAny<byte>()))
-                       .Callback((byte b) => {
+                       .Callback((byte b) =>
+                       {
                            if (callOrder.Contains("Range")) callOrder.Add("DataValueStart");
                        });
 

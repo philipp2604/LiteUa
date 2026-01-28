@@ -1,9 +1,6 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Stack.Attribute;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Attribute
 {
@@ -61,7 +58,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Attribute
             // Arrange
             _readerMock.Setup(r => r.ReadByte()).Returns(0);
 
-            // Sequence for ReadInt32: 
+            // Sequence for ReadInt32:
             // 1. Header
             // 2. Results Count (1)
             // 3. Diagnostic Count (1)

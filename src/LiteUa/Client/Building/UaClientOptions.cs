@@ -1,5 +1,4 @@
-﻿using LiteUa.Client.Subscriptions;
-using LiteUa.Security.Policies;
+﻿using LiteUa.Security.Policies;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
 using System.Security.Cryptography.X509Certificates;
@@ -31,6 +30,11 @@ namespace LiteUa.Client.Building
         /// The client pool options for the UaClient.
         /// </summary>
         public PoolOptions Pool { get; } = new();
+
+        /// <summary>
+        /// The transport limits for the UaClient.
+        /// </summary>
+        public TransportLimits Limits { get; } = new();
 
         public async ValueTask DisposeAsync()
         {
@@ -102,7 +106,7 @@ namespace LiteUa.Client.Building
                     await Task.Run(() => ClientCertificate.Dispose());
                     ClientCertificate = null;
                 }
-                if(ServerCertificate != null)
+                if (ServerCertificate != null)
                 {
                     await Task.Run(() => ServerCertificate.Dispose());
                     ServerCertificate = null;
@@ -147,6 +151,37 @@ namespace LiteUa.Client.Building
             /// Gets or sets the maximum number of UaClient instances to maintain in the pool.
             /// </summary>
             public int MaxSize { get; set; } = 10;
+        }
+
+        /// <summary>
+        /// Represents a set of options for configuring transport limits for the UaClient.
+        /// </summary>
+        public class TransportLimits
+        {
+            /// <summary>
+            /// Gets or sets the heartbeat interval in milliseconds for maintaining the connection.
+            /// </summary>
+            public uint HeartbeatIntervalMs { get; set; } = 20000;
+
+            /// <summary>
+            /// Gets or sets the heartbeat timeout hint in milliseconds for detecting lost connections.
+            /// </summary>
+            public uint HeartbeatTimeoutHintMs { get; set; } = 10000;
+
+            /// <summary>
+            /// Gets or sets the maximum number of concurrent publish requests that can be outstanding at any given time.
+            /// </summary>
+            public uint MaxPublishRequestCount { get; set; } = 3;
+
+            /// <summary>
+            /// Gets or sets the multiplier used to calculate the publish timeout based on the publishing interval and the keepalive count.
+            /// </summary>
+            public double PublishTimeoutMultiplier { get; set; } = 2.0;
+
+            /// <summary>
+            /// Gets or sets the minimum publish timeout in milliseconds to ensure timely processing of publish requests.
+            /// </summary>
+            public uint MinPublishTimeoutMs { get; set; } = 10000;
         }
     }
 }

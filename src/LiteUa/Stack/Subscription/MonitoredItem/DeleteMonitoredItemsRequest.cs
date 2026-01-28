@@ -30,7 +30,7 @@ namespace LiteUa.Stack.Subscription.MonitoredItem
         public uint[]? MonitoredItemIds { get; set; }
 
         /// <summary>
-        /// Encodes the DeleteMonitoredItemsRequest using the provided <see cref="OpcUaBinaryWriter"/>. 
+        /// Encodes the DeleteMonitoredItemsRequest using the provided <see cref="OpcUaBinaryWriter"/>.
         /// </summary>
         /// <param name="writer">The <see cref="OpcUaBinaryWriter"/> to use for encoding.</param>
         public void Encode(OpcUaBinaryWriter writer)

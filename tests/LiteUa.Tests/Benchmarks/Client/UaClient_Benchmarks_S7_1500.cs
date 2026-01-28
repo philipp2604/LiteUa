@@ -1,16 +1,11 @@
 ﻿using LiteUa.BuiltIn;
+using LiteUa.Client;
 using LiteUa.Security;
 using LiteUa.Security.Policies;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
-using LiteUa.Client;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
 using Xunit.Abstractions;
 
 namespace LiteUa.Tests.Benchmarks.Client
@@ -57,9 +52,9 @@ namespace LiteUa.Tests.Benchmarks.Client
             _output.WriteLine($"[1] Connection & Session Establishment: {connectTime} ms");
 
             // 2. Benchmark Read (Small Payload - 5 nodes)
-            var nodesToRead = new NodeId[] 
-            { 
-                new(3, "\"Variables_ReadTest\".\"TestBool\""), 
+            var nodesToRead = new NodeId[]
+            {
+                new(3, "\"Variables_ReadTest\".\"TestBool\""),
                 new(3, "\"Variables_ReadTest\".\"TestByte\""),
                 new(3, "\"Variables_ReadTest\".\"TestChar\""),
                 new(3, "\"Variables_ReadTest\".\"TestDInt\""),
@@ -127,7 +122,8 @@ namespace LiteUa.Tests.Benchmarks.Client
                         s.UserTokenPolicyType = SecurityPolicyType.None;
                     }
                 })
-                .WithSession(s => { 
+                .WithSession(s =>
+                {
                     s.ApplicationName = ApplicationName;
                     s.ApplicationUri = ApplicationUri;
                     s.ProductUri = ProductUri;

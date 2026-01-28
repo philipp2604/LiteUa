@@ -1,11 +1,8 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Encoding;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace LiteUa.Tests.UnitTests.Client.BuiltIn
+namespace LiteUa.Tests.UnitTests.BuiltIn
 {
     [Trait("Category", "Unit")]
     public class DiagnosticInfoTests
@@ -53,7 +50,7 @@ namespace LiteUa.Tests.UnitTests.Client.BuiltIn
         [Fact]
         public void Decode_RecursiveDiagnosticInfo_ParsesNestedStructure()
         {
-            // Arrange: 
+            // Arrange:
             // 1. Parent Mask: 0x40 (InnerDiagnosticInfo present)
             // 2. Child Mask: 0x01 (SymbolicId present)
             // 3. Grandchild Mask: 0x00 (Null/End recursion)

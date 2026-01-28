@@ -1,29 +1,9 @@
 ﻿using LiteUa.BuiltIn;
-using LiteUa.Client;
-using LiteUa.Encoding;
-using LiteUa.Security;
-using LiteUa.Security.Policies;
-using LiteUa.Stack.Attribute;
 using LiteUa.Stack.Discovery;
-using LiteUa.Stack.Method;
-using LiteUa.Stack.SecureChannel;
-using LiteUa.Stack.Session;
 using LiteUa.Stack.Session.Identity;
-using LiteUa.Stack.Subscription;
 using LiteUa.Stack.Subscription.MonitoredItem;
 using LiteUa.Stack.View;
 using LiteUa.Transport.Headers;
-using LiteUa.Transport.TcpMessages;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net.Sockets;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace LiteUa.Transport
 {

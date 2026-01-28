@@ -1,6 +1,5 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Client.Building;
-using LiteUa.Client.Discovery;
 using LiteUa.Client.Pooling;
 using LiteUa.Client.Subscriptions;
 using LiteUa.Security.Policies;
@@ -45,7 +44,6 @@ namespace LiteUa.Client
             _tcpClientChannelFactory = channelFactory;
             _innerClientsFactory = innerClientsFactory;
 
-
             _policyFactory = options.Security.PolicyType switch
             {
                 SecurityPolicyType.None => new SecurityPolicyFactoryNone(),
@@ -75,6 +73,8 @@ namespace LiteUa.Client
                 _options.Session.ApplicationUri,
                 _options.Session.ProductUri,
                 _options.Session.ApplicationName,
+                _options.Limits.HeartbeatIntervalMs,
+                _options.Limits.HeartbeatTimeoutHintMs,
             _tcpClientChannelFactory);
 
             string policyUri = _options.Security.PolicyType switch
@@ -127,6 +127,11 @@ namespace LiteUa.Client
                 _options.Security.MessageSecurityMode,
                 _options.Security.ClientCertificate,
                 _options.Security.ServerCertificate,
+                _options.Limits.HeartbeatIntervalMs,
+                _options.Limits.HeartbeatTimeoutHintMs,
+                _options.Limits.MaxPublishRequestCount,
+                _options.Limits.PublishTimeoutMultiplier,
+                _options.Limits.MinPublishTimeoutMs,
                 _tcpClientChannelFactory
             );
 
@@ -145,6 +150,8 @@ namespace LiteUa.Client
                 _options.Security.ClientCertificate,
                 _options.Security.ServerCertificate,
                 _options.Pool.MaxSize,
+                _options.Limits.HeartbeatIntervalMs,
+                _options.Limits.HeartbeatTimeoutHintMs,
                 _tcpClientChannelFactory
             );
         }

@@ -1,9 +1,6 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Stack.Session;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Session
 {
@@ -99,12 +96,14 @@ namespace LiteUa.Tests.UnitTests.Stack.Session
             // Arrange
             var callOrder = new List<string>();
 
-            _readerMock.Setup(r => r.ReadDouble()).Returns(() => {
+            _readerMock.Setup(r => r.ReadDouble()).Returns(() =>
+            {
                 callOrder.Add("Timeout");
                 return 0;
             });
 
-            _readerMock.Setup(r => r.ReadUInt32()).Returns(() => {
+            _readerMock.Setup(r => r.ReadUInt32()).Returns(() =>
+            {
                 callOrder.Add("MaxMsgSize");
                 return 0;
             });

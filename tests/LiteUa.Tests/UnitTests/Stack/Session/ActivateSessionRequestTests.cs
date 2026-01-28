@@ -2,9 +2,6 @@
 using LiteUa.Encoding;
 using LiteUa.Stack.Session;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Session
 {
@@ -43,7 +40,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Session
             {
                 LocaleIds = ["en-US", "de-DE"],
                 UserIdentityToken = new ExtensionObject { TypeId = new NodeId(321) }, // Anonymous
-                ClientSignature = new SignatureData { Signature = [ 0xA ] },
+                ClientSignature = new SignatureData { Signature = [0xA] },
                 UserTokenSignature = new SignatureData { Signature = [0xB] }
             };
 

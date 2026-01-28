@@ -5,9 +5,6 @@ using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
 using LiteUa.Transport;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Client.Discovery
 {
@@ -29,10 +26,10 @@ namespace LiteUa.Tests.UnitTests.Client.Discovery
             _channelMock = new Mock<IUaTcpClientChannel>();
 
             _factoryMock.Setup(f => f.CreateTcpClientChannel(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                                           It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(), null, null))
+                                           It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(), null, null, It.IsAny<uint>(), It.IsAny<uint>()))
                         .Returns(_channelMock.Object);
 
-            _sut = new DiscoveryClient(TestUrl, AppUri, ProdUri, AppName, _factoryMock.Object);
+            _sut = new DiscoveryClient(TestUrl, AppUri, ProdUri, AppName, 20000, 10000, _factoryMock.Object);
         }
 
         [Fact]

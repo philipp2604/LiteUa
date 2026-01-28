@@ -5,12 +5,7 @@ using LiteUa.Security.Policies;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
 using LiteUa.Transport;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.Client
 {
@@ -26,6 +21,11 @@ namespace LiteUa.Client
             MessageSecurityMode securityMode,
             X509Certificate2? clientCertificate,
             X509Certificate2? serverCertificate,
+            uint heartbeatIntervalMs,
+            uint heartbeatTimeoutHintMs,
+            uint maxPublishRequests,
+            double publishTimeoutMultiplier,
+            uint minPublishTimeoutMs,
             IUaTcpClientChannelFactory clientChannelFactory,
             int supervisorIntervalMs = 1000,
             int reconnectIntervalMs = 5000
@@ -39,6 +39,11 @@ namespace LiteUa.Client
                 securityMode,
                 clientCertificate,
                 serverCertificate,
+                heartbeatIntervalMs,
+                heartbeatTimeoutHintMs,
+                maxPublishRequests,
+                publishTimeoutMultiplier,
+                minPublishTimeoutMs,
                 clientChannelFactory,
                 supervisorIntervalMs,
                 reconnectIntervalMs);
@@ -48,12 +53,16 @@ namespace LiteUa.Client
             string applicationUri,
             string productUri,
             string applicationName,
+            uint heartbeatIntervalMs,
+            uint heartbeatTimeoutHintMs,
             IUaTcpClientChannelFactory clientChannelFactory
         ) => new DiscoveryClient(
                 endpointUrl,
                 applicationUri,
                 productUri,
                 applicationName,
+                heartbeatIntervalMs,
+                heartbeatTimeoutHintMs,
                 clientChannelFactory);
 
         public IUaClientPool CreateUaClientPool(
@@ -67,6 +76,8 @@ namespace LiteUa.Client
             X509Certificate2? clientCert,
             X509Certificate2? serverCert,
             int maxSize,
+            uint heartbeatIntervalMs,
+            uint heartbeatTimeoutHintMs,
             IUaTcpClientChannelFactory tcpClientChannelFactory
         ) => new UaClientPool(
                 endpointUrl,
@@ -79,6 +90,8 @@ namespace LiteUa.Client
                 clientCert,
                 serverCert,
                 maxSize,
+                heartbeatIntervalMs,
+                heartbeatTimeoutHintMs,
                 tcpClientChannelFactory);
     }
 }

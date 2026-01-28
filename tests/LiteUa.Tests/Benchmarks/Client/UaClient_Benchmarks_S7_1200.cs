@@ -1,16 +1,11 @@
 ﻿using LiteUa.BuiltIn;
+using LiteUa.Client;
 using LiteUa.Security;
 using LiteUa.Security.Policies;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
-using LiteUa.Client;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
 using Xunit.Abstractions;
 
 namespace LiteUa.Tests.Benchmarks.Client
@@ -120,7 +115,8 @@ namespace LiteUa.Tests.Benchmarks.Client
                         s.UserTokenPolicyType = SecurityPolicyType.None;
                     }
                 })
-                .WithSession(s => { 
+                .WithSession(s =>
+                {
                     s.ApplicationName = ApplicationName;
                     s.ApplicationUri = ApplicationUri;
                     s.ProductUri = ProductUri;

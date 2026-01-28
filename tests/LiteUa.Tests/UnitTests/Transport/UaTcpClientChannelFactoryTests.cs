@@ -2,12 +2,9 @@
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Transport;
 using Moq;
-using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Transport
 {
@@ -42,7 +39,9 @@ namespace LiteUa.Tests.UnitTests.Transport
                 _policyFactoryMock.Object,
                 mode,
                 null,
-                null);
+                null,
+                20000,
+                10000);
 
             // Assert
             Assert.NotNull(channel);
@@ -67,7 +66,9 @@ namespace LiteUa.Tests.UnitTests.Transport
                 policyMock.Object,
                 MessageSecurityMode.None,
                 null,
-                null));
+                null,
+                20000,
+                10000));
         }
 
         [Fact]
@@ -82,7 +83,9 @@ namespace LiteUa.Tests.UnitTests.Transport
                 null!,
                 MessageSecurityMode.None,
                 null,
-                null));
+                null,
+                20000,
+                10000));
         }
 
         [Fact]
@@ -101,7 +104,9 @@ namespace LiteUa.Tests.UnitTests.Transport
                 _policyFactoryMock.Object,
                 MessageSecurityMode.SignAndEncrypt,
                 clientCert,
-                serverCert);
+                serverCert,
+                20000,
+                10000);
 
             // Assert
             Assert.NotNull(channel);

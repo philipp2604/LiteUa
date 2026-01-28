@@ -2,7 +2,6 @@
 
 namespace LiteUa.Stack.Subscription
 {
-
     /// <summary>
     /// Represents a SubscriptionAcknowledgement in the OPC UA protocol.
     /// </summary>

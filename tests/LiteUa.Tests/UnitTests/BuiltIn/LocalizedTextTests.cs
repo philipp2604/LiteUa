@@ -1,11 +1,8 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Encoding;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace LiteUa.Tests.UnitTests.Client.BuiltIn
+namespace LiteUa.Tests.UnitTests.BuiltIn
 {
     [Trait("Category", "Unit")]
     public class LocalizedTextTests
@@ -70,7 +67,7 @@ namespace LiteUa.Tests.UnitTests.Client.BuiltIn
             Assert.Equal(expectedText, result.Text);
         }
 
-        #endregion
+        #endregion Decode Tests
 
         #region Encode Tests
 
@@ -103,7 +100,7 @@ namespace LiteUa.Tests.UnitTests.Client.BuiltIn
             _writerMock.Verify(w => w.WriteString("Hallo"), Times.Once);
         }
 
-        #endregion
+        #endregion Encode Tests
 
         #region Operator Tests
 
@@ -147,6 +144,6 @@ namespace LiteUa.Tests.UnitTests.Client.BuiltIn
             Assert.Null(lt.Locale);
         }
 
-        #endregion
+        #endregion Operator Tests
     }
 }

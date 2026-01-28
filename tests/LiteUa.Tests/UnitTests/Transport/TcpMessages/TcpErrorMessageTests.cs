@@ -1,9 +1,6 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Transport.TcpMessages;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Transport.TcpMessages
 {

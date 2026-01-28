@@ -27,7 +27,7 @@ namespace LiteUa.Stack.View
         /// <summary>
         /// Gets or sets a value indicating whether subtypes are included in the operation.
         /// </summary>
-        public bool IncludeSubtypes { get; set; } = true; 
+        public bool IncludeSubtypes { get; set; } = true;
 
         /// <summary>
         /// Gets or sets a bitmask that specifies which node classes to include in the operation.

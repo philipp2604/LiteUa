@@ -1,9 +1,6 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Stack.Method;
-using System;
-using System.Collections.Generic;
 using System.Reflection;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Method
 {

@@ -8,10 +8,7 @@ using LiteUa.Stack.Subscription.MonitoredItem;
 using LiteUa.Transport;
 using LiteUa.Transport.Headers;
 using Moq;
-using System;
-using System.Collections.Generic;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Client.Subscriptions
 {
@@ -54,7 +51,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
                 });
 
             _factoryMock.Setup(f => f.CreateTcpClientChannel(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(), It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>()))
+                It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(), It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>(), It.IsAny<uint>(), It.IsAny<uint>()))
                 .Returns(_channelMock.Object);
         }
 
@@ -63,7 +60,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
             return new SubscriptionClient(
                 "opc.tcp://localhost:4840", "urn:test:client", "urn:test:prod", "TestApp",
                 _userIdentityMock.Object, _policyMock.Object, MessageSecurityMode.None,
-                null, null, _factoryMock.Object, supervisorMs, reconnectMs);
+                null, null, 20000, 10000, 3, 2.0, 10000, _factoryMock.Object, supervisorMs, reconnectMs);
         }
 
         [Fact]
@@ -175,7 +172,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
 
             await Task.Delay(100); // Wait for restoration
 
-            // Assert: 
+            // Assert:
             // 1. Old channel disposed
             _channelMock.Verify(c => c.DisposeAsync(), Times.AtLeastOnce);
             // 2. New channel setup

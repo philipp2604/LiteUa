@@ -1,11 +1,8 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Encoding;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace LiteUa.Tests.UnitTests.Client.BuiltIn
+namespace LiteUa.Tests.UnitTests.BuiltIn
 {
     [Trait("Category", "Unit")]
     public class DataValueTests
@@ -45,7 +42,6 @@ namespace LiteUa.Tests.UnitTests.Client.BuiltIn
             // Assert
             _writerMock.Verify(w => w.WriteByte(0x03), Times.Once); // Mask: 0x01 (Value) | 0x02 (StatusCode)
             _writerMock.Verify(w => w.WriteInt16(It.Is<short>(v => v == 42)), Times.Once);
-
         }
 
         [Fact]
@@ -78,8 +74,8 @@ namespace LiteUa.Tests.UnitTests.Client.BuiltIn
         public void ToString_ReturnsFormattedString()
         {
             // Arrange
-            var dv = new DataValue() 
-            { 
+            var dv = new DataValue()
+            {
                 Value = new Variant((short)123, BuiltInType.Int16),
                 SourceTimestamp = new DateTime(2024, 1, 1),
                 StatusCode = new StatusCode(2150891520)
