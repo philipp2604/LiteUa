@@ -2,7 +2,6 @@
 
 namespace LiteUa.Client.Pooling
 {
-
     /// <summary>
     /// Represents a pooled OPC UA TCP client channel.
     /// </summary>

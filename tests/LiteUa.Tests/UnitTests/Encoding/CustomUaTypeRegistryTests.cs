@@ -1,9 +1,6 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Encoding;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Encoding
 {
@@ -134,7 +131,8 @@ namespace LiteUa.Tests.UnitTests.Encoding
             for (int i = 0; i < 10; i++)
             {
                 int localI = i;
-                tasks.Add(Task.Run(() => {
+                tasks.Add(Task.Run(() =>
+                {
                     CustomUaTypeRegistry.Register(new NodeId((ushort)localI), r => localI, (o, w) => { });
                 }));
             }

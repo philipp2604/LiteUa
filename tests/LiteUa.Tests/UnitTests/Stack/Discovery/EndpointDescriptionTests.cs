@@ -2,9 +2,6 @@
 using LiteUa.Stack.Discovery;
 using LiteUa.Stack.SecureChannel;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.Discovery
 {
@@ -72,7 +69,7 @@ namespace LiteUa.Tests.UnitTests.Stack.Discovery
             _readerMock.Setup(r => r.ReadByte()).Returns(0); // For LocalizedText Mask and SecurityLevel
             _readerMock.Setup(r => r.ReadByteString()).Returns([]);
 
-            // Sequence for Int32: 
+            // Sequence for Int32:
             // 1. AppType, 2. DiscoveryUrlCount, 3. SecurityMode, 4. UserTokenPolicyCount (1)
             _readerMock.SetupSequence(r => r.ReadInt32())
                 .Returns(0).Returns(0).Returns(1).Returns(1);
@@ -110,11 +107,13 @@ namespace LiteUa.Tests.UnitTests.Stack.Discovery
             // Arrange
             var callOrder = new List<string>();
 
-            _readerMock.Setup(r => r.ReadString()).Returns(() => {
+            _readerMock.Setup(r => r.ReadString()).Returns(() =>
+            {
                 callOrder.Add("String");
                 return "some-string";
             });
-            _readerMock.Setup(r => r.ReadByte()).Returns(() => {
+            _readerMock.Setup(r => r.ReadByte()).Returns(() =>
+            {
                 callOrder.Add("Byte");
                 return 0;
             });

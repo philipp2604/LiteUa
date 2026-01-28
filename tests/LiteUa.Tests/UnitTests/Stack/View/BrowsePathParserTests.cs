@@ -1,7 +1,4 @@
 ﻿using LiteUa.Stack.View;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.View
 {

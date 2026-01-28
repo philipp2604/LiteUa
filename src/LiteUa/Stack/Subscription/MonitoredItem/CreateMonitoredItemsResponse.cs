@@ -4,7 +4,6 @@ using LiteUa.Transport.Headers;
 
 namespace LiteUa.Stack.Subscription.MonitoredItem
 {
-
     /// <summary>
     /// Represents a CreateMonitoredItemsResponse message in the OPC UA protocol.
     /// </summary>

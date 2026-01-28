@@ -349,23 +349,29 @@ namespace LiteUa.BuiltIn
                         case "ns":
                             if (!ushort.TryParse(value, out ns)) return false;
                             break;
+
                         case "nsu":
                             nsu = value;
                             break;
+
                         case "svr":
                             if (!uint.TryParse(value, out svr)) return false;
                             break;
+
                         case "i":
                             if (!uint.TryParse(value, out uint i)) return false;
                             numericId = i;
                             break;
+
                         case "s":
                             stringId = value;
                             break;
+
                         case "g":
                             if (!Guid.TryParse(value, out Guid g)) return false;
                             guidId = g;
                             break;
+
                         case "b":
                             try { byteStringId = Convert.FromBase64String(value); }
                             catch { return false; }

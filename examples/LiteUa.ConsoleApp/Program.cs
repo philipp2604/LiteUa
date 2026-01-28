@@ -11,7 +11,7 @@ namespace LiteUa.ConsoleApp
     {
         private static UaClient? _client;
 
-        static async Task Main()
+        private static async Task Main()
         {
             Console.WriteLine("=== LiteUa OPC UA Console Client ===");
 
@@ -188,7 +188,7 @@ namespace LiteUa.ConsoleApp
 
         private static async Task CallMethodMenu()
         {
-            // Using the "Add" method from your integration tests
+            // Calling a simple Add method on an example object
             Console.WriteLine("Calling Example Add Method (Object ns=4;i=312, Method ns=4;i=313)");
             Console.Write("Enter Val A (short): ");
             short a = short.Parse(Console.ReadLine() ?? "0");
@@ -214,7 +214,7 @@ namespace LiteUa.ConsoleApp
 
         public async ValueTask DisposeAsync()
         {
-            if(_client != null)
+            if (_client != null)
             {
                 await _client.DisposeAsync();
                 _client = null;

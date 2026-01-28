@@ -1,11 +1,6 @@
 ﻿using LiteUa.Security.Policies;
 using LiteUa.Stack.SecureChannel;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.Transport
 {
@@ -25,6 +20,8 @@ namespace LiteUa.Transport
         /// <param name="securityMode">The message security mode (None, Sign, or SignAndEncrypt) to apply to the communication.</param>
         /// <param name="clientCertificate">The X.509 certificate of the client, typically including the private key for signing and decryption.</param>
         /// <param name="serverCertificate">The X.509 certificate of the server used for encryption and signature verification.</param>
+        /// <param name="heartbeatIntervalMs">The interval in milliseconds at which heartbeat messages are sent to maintain the connection.</param>
+        /// <param name="heartbeatTimeoutHintMs">The timeout hint in milliseconds indicating how long to wait for a heartbeat response before considering the connection lost.</param>
         /// <returns>An instance of <see cref="IUaTcpClientChannel"/> configured with the specified security and connection parameters.</returns>
         public IUaTcpClientChannel CreateTcpClientChannel(
             string endpointUrl,
@@ -34,6 +31,8 @@ namespace LiteUa.Transport
             ISecurityPolicyFactory policyFactory,
             MessageSecurityMode securityMode,
             X509Certificate2? clientCertificate,
-            X509Certificate2? serverCertificate);
+            X509Certificate2? serverCertificate,
+            uint heartbeatIntervalMs,
+            uint heartbeatTimeoutHintMs);
     }
 }

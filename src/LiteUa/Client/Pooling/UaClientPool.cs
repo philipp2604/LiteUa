@@ -22,6 +22,8 @@ namespace LiteUa.Client.Pooling
         private readonly X509Certificate2? _serverCert;
         private readonly MessageSecurityMode _securityMode;
         private readonly int _maxSize;
+        private readonly uint _heartbeatIntervalMs;
+        private readonly uint _heartbeatTimeoutHintMs;
         private readonly IUaTcpClientChannelFactory _tcpClientChannelFactory;
 
         // Idle clients
@@ -42,6 +44,8 @@ namespace LiteUa.Client.Pooling
         /// <param name="clientCert">Optional: The client's certificate.</param>
         /// <param name="serverCert">Optional: The server's certificate.</param>
         /// <param name="maxSize">The max. pool size.</param>
+        /// <param name="heartbeatIntervalMs"">The heartbeat interval in milliseconds.</param>
+        /// <param name="heartbeatTimeoutHintMs">The heartbeat timeout hint in milliseconds.</param>
         /// <param name="tcpClientChannelFactory">An instance of <see cref="IUaTcpClientChannelFactory"/>.</param>
         public UaClientPool(
             string endpointUrl,
@@ -54,6 +58,8 @@ namespace LiteUa.Client.Pooling
             X509Certificate2? clientCert,
             X509Certificate2? serverCert,
             int maxSize,
+            uint heartbeatIntervalMs,
+            uint heartbeatTimeoutHintMs,
             IUaTcpClientChannelFactory tcpClientChannelFactory)
         {
             ArgumentNullException.ThrowIfNullOrWhiteSpace(endpointUrl);
@@ -74,6 +80,8 @@ namespace LiteUa.Client.Pooling
             _serverCert = serverCert;
             _securityMode = securityMode;
             _maxSize = maxSize;
+            _heartbeatIntervalMs = heartbeatIntervalMs;
+            _heartbeatTimeoutHintMs = heartbeatTimeoutHintMs;
             _clients = [];
             _semaphore = new(maxSize, maxSize);
             _tcpClientChannelFactory = tcpClientChannelFactory;
@@ -123,7 +131,7 @@ namespace LiteUa.Client.Pooling
 
         private async Task<IUaTcpClientChannel> CreateNewClientAsync()
         {
-            var client = _tcpClientChannelFactory.CreateTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert);
+            var client = _tcpClientChannelFactory.CreateTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert, _heartbeatIntervalMs, _heartbeatTimeoutHintMs);
 
             try
             {

@@ -1,11 +1,6 @@
 ﻿using LiteUa.Security.Policies;
 using LiteUa.Stack.SecureChannel;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LiteUa.Transport
 {
@@ -22,7 +17,9 @@ namespace LiteUa.Transport
             ISecurityPolicyFactory policyFactory,
             MessageSecurityMode securityMode,
             X509Certificate2? clientCertificate,
-            X509Certificate2? serverCertificate)
+            X509Certificate2? serverCertificate,
+            uint heartbeatIntervalMs,
+            uint heartbeatTimeoutHintMs)
         {
             return new UaTcpClientChannel(
                 endpointUrl,
@@ -32,7 +29,9 @@ namespace LiteUa.Transport
                 policyFactory,
                 securityMode,
                 clientCertificate,
-                serverCertificate);
+                serverCertificate,
+                heartbeatIntervalMs,
+                heartbeatTimeoutHintMs);
         }
     }
 }

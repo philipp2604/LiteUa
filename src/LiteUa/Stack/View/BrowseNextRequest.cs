@@ -2,7 +2,6 @@
 using LiteUa.Encoding;
 using LiteUa.Transport.Headers;
 
-
 namespace LiteUa.Stack.View
 {
     /// <summary>

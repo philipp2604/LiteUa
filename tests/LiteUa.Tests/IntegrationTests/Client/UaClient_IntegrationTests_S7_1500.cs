@@ -8,8 +8,6 @@ using LiteUa.Stack.Method;
 using LiteUa.Stack.SecureChannel;
 using LiteUa.Stack.Session.Identity;
 using LiteUa.Transport;
-using System.ComponentModel;
-using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Xunit.Abstractions;
@@ -83,7 +81,6 @@ namespace LiteUa.Tests.IntegrationTests.Client
                             tcsInitial.TrySetResult(true);
                         else
                             tcsAfterReconnect.TrySetResult(true);
-
                     }
                 ]);
 
@@ -149,7 +146,6 @@ namespace LiteUa.Tests.IntegrationTests.Client
                             tcsInitial.TrySetResult(true);
                         else
                             tcsAfterReconnect.TrySetResult(true);
-
                     }
                 ]);
 
@@ -215,7 +211,6 @@ namespace LiteUa.Tests.IntegrationTests.Client
                             tcsInitial.TrySetResult(true);
                         else
                             tcsAfterReconnect.TrySetResult(true);
-
                     }
                 ]);
 
@@ -284,7 +279,6 @@ namespace LiteUa.Tests.IntegrationTests.Client
                             tcsInitial.TrySetResult(true);
                         else
                             tcsAfterReconnect.TrySetResult(true);
-
                     }
                 ]);
 
@@ -353,7 +347,6 @@ namespace LiteUa.Tests.IntegrationTests.Client
                             tcsInitial.TrySetResult(true);
                         else
                             tcsAfterReconnect.TrySetResult(true);
-
                     }
                 ]);
 
@@ -422,7 +415,6 @@ namespace LiteUa.Tests.IntegrationTests.Client
                             tcsInitial.TrySetResult(true);
                         else
                             tcsAfterReconnect.TrySetResult(true);
-
                     }
                 ]);
 
@@ -446,7 +438,7 @@ namespace LiteUa.Tests.IntegrationTests.Client
             Assert.True(result2);
         }
 
-        #endregion
+        #endregion Connect, Subscribe and Reconnect tests
 
         #region Connect and Subscribe tests
 
@@ -2558,7 +2550,7 @@ namespace LiteUa.Tests.IntegrationTests.Client
             Assert.Equal((int)(valA + valB), outputArgs.Result);
         }
 
-        #endregion 
+        #endregion Connect and Call Typed Method tests
 
         #region Connect and Call Complex Typed Method tests
 
@@ -2889,7 +2881,7 @@ namespace LiteUa.Tests.IntegrationTests.Client
             }
         }
 
-        #endregion
+        #endregion Connect and Call Complex Typed Method tests
 
         #region Connect and Subscribe and Write Custom Struct Array tests
 
@@ -3703,7 +3695,7 @@ namespace LiteUa.Tests.IntegrationTests.Client
             public DT_Object[]? InputObjects { get; set; }
         }
 
-        class ComplexMethodOutputArgs
+        private class ComplexMethodOutputArgs
         {
             [OpcMethodParameter(0, BuiltInType.ExtensionObject)]
             public DT_Object[]? OutputObjects { get; set; }

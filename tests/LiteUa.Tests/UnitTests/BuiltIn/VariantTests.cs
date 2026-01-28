@@ -1,9 +1,6 @@
 ﻿using LiteUa.BuiltIn;
 using LiteUa.Encoding;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.BuiltIn
 {
@@ -62,7 +59,7 @@ namespace LiteUa.Tests.UnitTests.BuiltIn
             Assert.True(variant.IsArray, "When type is Byte, a byte[] should be treated as an array.");
         }
 
-        #endregion
+        #endregion Constructor Tests
 
         #region Encode Tests
 
@@ -126,7 +123,7 @@ namespace LiteUa.Tests.UnitTests.BuiltIn
             _writerMock.Verify(w => w.WriteInt32(105), Times.Once);
 
             // 4. Verify Dimension Metadata
-            // WriteInt32(2) should happen twice: 
+            // WriteInt32(2) should happen twice:
             // - Once for the number of dimensions (dims.Length = 2)
             // - Once for the first dimension size (dims[0] = 2)
             _writerMock.Verify(w => w.WriteInt32(2), Times.Exactly(2));
@@ -136,7 +133,7 @@ namespace LiteUa.Tests.UnitTests.BuiltIn
             _writerMock.Verify(w => w.WriteInt32(3), Times.Once);
         }
 
-        #endregion
+        #endregion Encode Tests
 
         #region Decode Tests
 
@@ -200,7 +197,7 @@ namespace LiteUa.Tests.UnitTests.BuiltIn
             Assert.Equal("Nested Content", inner.Value);
         }
 
-        #endregion
+        #endregion Decode Tests
 
         [Fact]
         public void ToString_Array_ReturnsFormattedString()

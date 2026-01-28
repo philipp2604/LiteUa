@@ -2,9 +2,6 @@
 using LiteUa.Encoding;
 using LiteUa.Stack.View;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.View
 {
@@ -53,17 +50,20 @@ namespace LiteUa.Tests.UnitTests.Stack.View
             // Arrange
             var callOrder = new List<string>();
 
-            _readerMock.Setup(r => r.ReadBoolean()).Returns(() => {
+            _readerMock.Setup(r => r.ReadBoolean()).Returns(() =>
+            {
                 callOrder.Add("Boolean");
                 return true;
             });
 
-            _readerMock.Setup(r => r.ReadUInt32()).Returns(() => {
+            _readerMock.Setup(r => r.ReadUInt32()).Returns(() =>
+            {
                 callOrder.Add("UInt32");
                 return 0u;
             });
 
-            _readerMock.Setup(r => r.ReadString()).Returns(() => {
+            _readerMock.Setup(r => r.ReadString()).Returns(() =>
+            {
                 callOrder.Add("String");
                 return "ValidName";
             });
@@ -75,7 +75,7 @@ namespace LiteUa.Tests.UnitTests.Stack.View
             ReferenceDescription.Decode(_readerMock.Object);
 
             // Assert
-            // ReferenceTypeId (NodeId) -> IsForward (Bool) -> NodeId (ExpandedNodeId) -> 
+            // ReferenceTypeId (NodeId) -> IsForward (Bool) -> NodeId (ExpandedNodeId) ->
             // BrowseName (QualifiedName) -> DisplayName (LocalizedText) -> NodeClass (UInt32) -> TypeDefinition (ExpandedNodeId)
 
             int boolIdx = callOrder.IndexOf("Boolean");

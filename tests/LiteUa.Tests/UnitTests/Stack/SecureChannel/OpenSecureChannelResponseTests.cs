@@ -1,9 +1,6 @@
 ﻿using LiteUa.Encoding;
 using LiteUa.Stack.SecureChannel;
 using Moq;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace LiteUa.Tests.UnitTests.Stack.SecureChannel
 {
@@ -88,11 +85,13 @@ namespace LiteUa.Tests.UnitTests.Stack.SecureChannel
             // Arrange
             var callOrder = new List<string>();
 
-            _readerMock.Setup(r => r.ReadUInt32()).Returns(() => {
+            _readerMock.Setup(r => r.ReadUInt32()).Returns(() =>
+            {
                 callOrder.Add("UInt32");
                 return 0;
             });
-            _readerMock.Setup(r => r.ReadByteString()).Returns(() => {
+            _readerMock.Setup(r => r.ReadByteString()).Returns(() =>
+            {
                 callOrder.Add("Nonce");
                 return null;
             });
