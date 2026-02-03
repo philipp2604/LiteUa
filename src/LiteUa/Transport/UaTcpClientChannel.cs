@@ -52,7 +52,7 @@ namespace LiteUa.Transport
         // --- Renewal Management ---
         private CancellationTokenSource? _renewCts;
 
-        private readonly uint _heartbeatIntervalMs;
+        private uint _heartbeatIntervalMs;
         private readonly NodeId _heartbeatNodeId = new(2258);
         private readonly uint _heartbeatTimeoutHintMs;
         private CancellationTokenSource? _heartbeatCts;
@@ -688,7 +688,7 @@ namespace LiteUa.Transport
                 SessionName = sessionName,
                 ClientNonce = _sessionClientNonce,
                 ClientCertificate = clientCertBytes,
-                RequestedSessionTimeout = 60000,
+                RequestedSessionTimeout = _heartbeatIntervalMs * 3,
                 MaxResponseMessageSize = 0
             };
 
@@ -701,6 +701,8 @@ namespace LiteUa.Transport
             {
                 _serverCertificate = X509CertificateLoader.LoadCertificate(response.ServerCertificate);
             }
+
+            _heartbeatIntervalMs = response.RevisedSessionTimeout > 0 && response.RevisedSessionTimeout < _heartbeatIntervalMs ? (uint)(response.RevisedSessionTimeout * 0.75) : _heartbeatIntervalMs;
 
             ValidateServerSessionSignature(response, _sessionClientNonce);
         }
@@ -780,6 +782,10 @@ namespace LiteUa.Transport
                     }
                 }
                 catch (OperationCanceledException) { }
+                catch (Exception)
+                {
+                    await DisconnectAsync();
+                }
             }, _heartbeatCts.Token);
         }
 
@@ -1008,6 +1014,9 @@ namespace LiteUa.Transport
             _renewCts?.Cancel();
             _renewCts = new CancellationTokenSource();
 
+            var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_renewCts.Token, cancellationToken);
+            var token = linkedCts.Token;
+
             // if lifetime is 0, set default 1 hour
             if (lifetimeMs == 0) lifetimeMs = 3600000;
 
@@ -1018,18 +1027,39 @@ namespace LiteUa.Transport
             {
                 try
                 {
-                    await Task.Delay(delayMs, _renewCts.Token);
-                    if (!_renewCts.IsCancellationRequested)
+                    await Task.Delay(delayMs, token);
+                    while (!token.IsCancellationRequested)
                     {
-                        await RenewSecureChannelAsync(cancellationToken);
+                        try
+                        {
+                            await RenewSecureChannelAsync(token);
+
+                            // SUCCESS
+                            return;
+                        }
+                        catch (Exception)
+                        {
+                            // FAILURE
+                            try
+                            {
+                                await Task.Delay(5000, token);
+                            }
+                            catch (OperationCanceledException) { break; }
+                        }
                     }
                 }
-                catch (TaskCanceledException) { }
+                catch (OperationCanceledException)
+                {
+                }
                 catch (Exception)
                 {
-                    /// TODO: Disconnect? Handle...
+                    await DisconnectAsync();
                 }
-            }, _renewCts.Token);
+                finally
+                {
+                    linkedCts.Dispose();
+                }
+            }, token);
         }
 
         private async Task PerformHandshakeAsync(string url, CancellationToken cancellationToken)
