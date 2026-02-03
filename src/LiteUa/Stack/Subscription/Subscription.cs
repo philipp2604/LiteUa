@@ -197,7 +197,8 @@ namespace LiteUa.Stack.Subscription
                 SubscriptionAcknowledgements = acksInThisRequest
             };
 
-            double calculatedTimeout = _publishingInterval * _keepAliveCount * _publishTimeoutMultiplier;
+            double keepAliveInterval = _publishingInterval * _keepAliveCount;
+            double calculatedTimeout = (keepAliveInterval * _maxPublishRequests) + (keepAliveInterval * _publishTimeoutMultiplier);
             req.RequestHeader.TimeoutHint = (uint)Math.Max(calculatedTimeout, _minPublishTimeoutMs);
 
             var response = await _channel.SendRequestAsync<PublishRequest, PublishResponse>(req, _cts!.Token);
