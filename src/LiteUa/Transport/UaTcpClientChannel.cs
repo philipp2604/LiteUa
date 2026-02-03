@@ -782,6 +782,10 @@ namespace LiteUa.Transport
                     }
                 }
                 catch (OperationCanceledException) { }
+                catch (Exception)
+                {
+                    await DisconnectAsync();
+                }
             }, _heartbeatCts.Token);
         }
 
