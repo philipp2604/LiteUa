@@ -52,7 +52,7 @@ namespace LiteUa.Transport
         // --- Renewal Management ---
         private CancellationTokenSource? _renewCts;
 
-        private readonly uint _heartbeatIntervalMs;
+        private uint _heartbeatIntervalMs;
         private readonly NodeId _heartbeatNodeId = new(2258);
         private readonly uint _heartbeatTimeoutHintMs;
         private CancellationTokenSource? _heartbeatCts;
@@ -701,6 +701,8 @@ namespace LiteUa.Transport
             {
                 _serverCertificate = X509CertificateLoader.LoadCertificate(response.ServerCertificate);
             }
+
+            _heartbeatIntervalMs = response.RevisedSessionTimeout > 0 && response.RevisedSessionTimeout < _heartbeatIntervalMs ? (uint)(response.RevisedSessionTimeout * 0.75) : _heartbeatIntervalMs;
 
             ValidateServerSessionSignature(response, _sessionClientNonce);
         }
