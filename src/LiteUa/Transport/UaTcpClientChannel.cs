@@ -688,7 +688,7 @@ namespace LiteUa.Transport
                 SessionName = sessionName,
                 ClientNonce = _sessionClientNonce,
                 ClientCertificate = clientCertBytes,
-                RequestedSessionTimeout = 60000,
+                RequestedSessionTimeout = _heartbeatIntervalMs * 3,
                 MaxResponseMessageSize = 0
             };
 
