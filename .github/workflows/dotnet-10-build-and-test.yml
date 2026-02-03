@@ -1,5 +1,5 @@
 # Testing for .NET 10
-name: .NET 10 (Latest) Build & Test
+name: .NET 10 Build & Test
 
 on:
   push:

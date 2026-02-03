@@ -14,7 +14,7 @@ namespace LiteUa.Client
     /// <summary>
     /// An orchestrating OPC UA Client.
     /// </summary>
-    public class UaClient : IDisposable, IAsyncDisposable
+    public class UaClient : IUaClient
     {
         private readonly UaClientOptions _options;
         private readonly ISecurityPolicyFactory _policyFactory;
@@ -26,6 +26,12 @@ namespace LiteUa.Client
 
         internal IUaClientPool? _pool;
         internal ISubscriptionClient? _subscriptionClient;
+
+        /// <summary>
+        /// A callback that is invoked when the connection status changes.
+        /// Returns true if connected, false if disconnected.
+        /// </summary>
+        public event Action<bool>? ConnectionStatusChanged;
 
         /// <summary>
         /// Creates a new instance of the <see cref="UaClient"/> class with the specified options, ChannelFactory, and InnerClientsFactory.
@@ -136,6 +142,10 @@ namespace LiteUa.Client
             );
 
             _subscriptionClient.DataChanged += OnSubscriptionDataChanged;
+            _subscriptionClient.ConnectionStatusChanged += (connected) =>
+            {
+                ConnectionStatusChanged?.Invoke(connected);
+            };
             _subscriptionClient.Start();
 
             // 2. Setup Pool (Request/Response)

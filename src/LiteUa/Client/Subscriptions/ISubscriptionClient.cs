@@ -11,6 +11,7 @@ namespace LiteUa.Client.Subscriptions
 
         /// <summary>
         /// A callback that is invoked when the connection status changes.
+        /// Returns true if connected, false if disconnected.
         /// </summary>
         public event Action<bool>? ConnectionStatusChanged;
 
