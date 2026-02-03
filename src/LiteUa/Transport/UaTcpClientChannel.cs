@@ -1014,6 +1014,9 @@ namespace LiteUa.Transport
             _renewCts?.Cancel();
             _renewCts = new CancellationTokenSource();
 
+            var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_renewCts.Token, cancellationToken);
+            var token = linkedCts.Token;
+
             // if lifetime is 0, set default 1 hour
             if (lifetimeMs == 0) lifetimeMs = 3600000;
 
@@ -1024,18 +1027,39 @@ namespace LiteUa.Transport
             {
                 try
                 {
-                    await Task.Delay(delayMs, _renewCts.Token);
-                    if (!_renewCts.IsCancellationRequested)
+                    await Task.Delay(delayMs, token);
+                    while (!token.IsCancellationRequested)
                     {
-                        await RenewSecureChannelAsync(cancellationToken);
+                        try
+                        {
+                            await RenewSecureChannelAsync(token);
+
+                            // SUCCESS
+                            return;
+                        }
+                        catch (Exception)
+                        {
+                            // FAILURE
+                            try
+                            {
+                                await Task.Delay(5000, token);
+                            }
+                            catch (OperationCanceledException) { break; }
+                        }
                     }
                 }
-                catch (TaskCanceledException) { }
+                catch (OperationCanceledException)
+                {
+                }
                 catch (Exception)
                 {
-                    /// TODO: Disconnect? Handle...
+                    await DisconnectAsync();
                 }
-            }, _renewCts.Token);
+                finally
+                {
+                    linkedCts.Dispose();
+                }
+            }, token);
         }
 
         private async Task PerformHandshakeAsync(string url, CancellationToken cancellationToken)
