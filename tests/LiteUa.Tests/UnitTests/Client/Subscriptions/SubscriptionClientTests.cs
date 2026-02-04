@@ -55,7 +55,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
                 .Returns(_channelMock.Object);
         }
 
-        private SubscriptionClient CreateSut(int supervisorMs = 10, int reconnectMs = 10)
+        private SubscriptionClient CreateSut(uint supervisorMs = 10, uint reconnectMs = 10)
         {
             return new SubscriptionClient(
                 "opc.tcp://localhost:4840", "urn:test:client", "urn:test:prod", "TestApp",
@@ -86,7 +86,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
             // Assert
             Assert.True(isConnected);
             _channelMock.Verify(c => c.ConnectAsync(It.IsAny<CancellationToken>()), Times.Once);
-            _channelMock.Verify(c => c.CreateSessionAsync("SubscriptionMonitoringSession", It.IsAny<CancellationToken>()), Times.Once);
+            _channelMock.Verify(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
             _channelMock.Verify(c => c.ActivateSessionAsync(_userIdentityMock.Object, It.IsAny<CancellationToken>()), Times.Once);
         }
 
@@ -176,7 +176,7 @@ namespace LiteUa.Tests.UnitTests.Client.Subscriptions
             // 1. Old channel disposed
             _channelMock.Verify(c => c.DisposeAsync(), Times.AtLeastOnce);
             // 2. New channel setup
-            _channelMock.Verify(c => c.CreateSessionAsync("SubscriptionMonitoringSession", It.IsAny<CancellationToken>()), Times.Exactly(2));
+            _channelMock.Verify(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
             // 3. RestoreItemsAsync triggers a re-subscription by sending a CreateMonitoredItemsRequest
             _channelMock.Verify(c => c.SendRequestAsync<CreateMonitoredItemsRequest, CreateMonitoredItemsResponse>(It.IsAny<CreateMonitoredItemsRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
         }

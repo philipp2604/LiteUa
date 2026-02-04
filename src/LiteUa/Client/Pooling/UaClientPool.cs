@@ -87,28 +87,51 @@ namespace LiteUa.Client.Pooling
             _tcpClientChannelFactory = tcpClientChannelFactory;
         }
 
+        public void Clear()
+        {
+            // Remove all idle clients from the bag and dispose them
+            while (_clients.TryTake(out var client))
+            {
+                try
+                {
+                    client.Dispose();
+                }
+                catch { /* ignore */ }
+            }
+        }
+
         public async Task<PooledUaClient> RentAsync()
         {
             // Wait for idle client
             await _semaphore.WaitAsync();
 
-            // Try to get an existing client
-            if (_clients.TryTake(out IUaTcpClientChannel? client))
-            {
-                /// TODO: Quick "IsConnected" check here, e.g. a read on ServerStatus node.
-                /// If broken -> Dispose and create a new one.
-                return new PooledUaClient(client, this);
-            }
-
-            // None available, create a new one. Semaphore takes care of max size.
             try
             {
-                client = await CreateNewClientAsync();
-                return new PooledUaClient(client, this);
+                // Try to get an existing client
+                while (_clients.TryTake(out IUaTcpClientChannel? client))
+                {
+                    if (client.IsConnected)
+                    {
+                        return new PooledUaClient(client, this);
+                    }
+
+                    // Client is dead/ghost. Dispose it and release slot to try again.
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await client.DisposeAsync();
+                        }
+                        catch { }
+                    });
+                }
+
+                var newClient = await CreateNewClientAsync();
+                return new PooledUaClient(newClient, this);
             }
             catch
             {
-                _semaphore.Release(); // Exception occured, free slot
+                _semaphore.Release();
                 throw;
             }
         }

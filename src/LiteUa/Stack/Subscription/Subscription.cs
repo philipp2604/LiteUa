@@ -189,46 +189,54 @@ namespace LiteUa.Stack.Subscription
 
         private async Task SendPublishRequestInternalAsync()
         {
-            SubscriptionAcknowledgement[] acksInThisRequest = [.. _unacknowledgedSequences.Values];
+            SubscriptionAcknowledgement[] acksToConfirm;
+            lock (_unacknowledgedSequences)
+            {
+                acksToConfirm = [.. _unacknowledgedSequences.Values];
+                _unacknowledgedSequences.Clear();
+            }
+
 
             var req = new PublishRequest
             {
                 RequestHeader = _channel.CreateRequestHeader(),
-                SubscriptionAcknowledgements = acksInThisRequest
+                SubscriptionAcknowledgements = acksToConfirm
             };
 
             double keepAliveInterval = _publishingInterval * _keepAliveCount;
             double calculatedTimeout = (keepAliveInterval * _maxPublishRequests) + (keepAliveInterval * _publishTimeoutMultiplier);
             req.RequestHeader.TimeoutHint = (uint)Math.Max(calculatedTimeout, _minPublishTimeoutMs);
 
-            var response = await _channel.SendRequestAsync<PublishRequest, PublishResponse>(req, _cts!.Token);
-
-            if (response.Results != null)
+            try
             {
-                for (int i = 0; i < response.Results.Length; i++)
+                var response = await _channel.SendRequestAsync<PublishRequest, PublishResponse>(req, _cts!.Token);
+
+                // If the server returns a NotificationMessage, we have a new sequence to ACK next time
+                if (response.NotificationMessage != null)
                 {
-                    if (response.Results[i].IsGood)
+                    var newAck = new SubscriptionAcknowledgement
                     {
-                        // Server confirmed receipt, we can stop sending this sequence number
-                        _unacknowledgedSequences.TryRemove(acksInThisRequest[i].SequenceNumber, out _);
+                        SubscriptionId = response.SubscriptionId,
+                        SequenceNumber = response.NotificationMessage.SequenceNumber
+                    };
+                    lock (_unacknowledgedSequences)
+                    {
+                        _unacknowledgedSequences[newAck.SequenceNumber] = newAck;
                     }
+
+                    if (response.NotificationMessage.NotificationData != null)
+                        HandleNotificationData(response.NotificationMessage.NotificationData);
                 }
             }
-
-            if (response.NotificationMessage != null)
+            catch (Exception)
             {
-                var newAck = new SubscriptionAcknowledgement
+                // If the request fails, put the ACKs back so the next request can try again
+                lock (_unacknowledgedSequences)
                 {
-                    SubscriptionId = response.SubscriptionId,
-                    SequenceNumber = response.NotificationMessage.SequenceNumber
-                };
-                _unacknowledgedSequences.TryAdd(newAck.SequenceNumber, newAck);
-
-                // 6. Process the payload
-                if (response.NotificationMessage.NotificationData != null)
-                {
-                    HandleNotificationData(response.NotificationMessage.NotificationData);
+                    foreach (var ack in acksToConfirm)
+                        _unacknowledgedSequences.TryAdd(ack.SequenceNumber, ack);
                 }
+                throw;
             }
         }
 

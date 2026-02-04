@@ -14,5 +14,10 @@
         /// Gets or sets the expected type of the response.
         /// </summary>
         public string ExpectedType { get; init; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the expiry time of the request.
+        /// </summary>
+        public DateTime ExpiryTime { get; set; }
     }
 }

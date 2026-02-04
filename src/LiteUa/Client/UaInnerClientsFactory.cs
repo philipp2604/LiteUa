@@ -27,8 +27,8 @@ namespace LiteUa.Client
             double publishTimeoutMultiplier,
             uint minPublishTimeoutMs,
             IUaTcpClientChannelFactory clientChannelFactory,
-            int supervisorIntervalMs = 1000,
-            int reconnectIntervalMs = 5000
+            uint supervisorIntervalMs,
+            uint reconnectIntervalMs
         ) => new SubscriptionClient(
                 endpointUrl,
                 applicationUri,
