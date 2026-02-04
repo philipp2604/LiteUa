@@ -225,17 +225,22 @@ namespace LiteUa.Client.Subscriptions
             // close old channel
             if (_channel != null)
             {
+                _channel.ConnectionLost -= (ex) => TriggerReconnect();
                 try { await _channel.DisposeAsync(); } catch { }
                 _channel = null;
             }
 
             // reset Buckets
-            foreach (var bucket in _buckets.Values) bucket.ClearLiveReference();
+            foreach (var bucket in _buckets.Values)
+            {
+                await bucket.StopAndClearLiveSubscriptionAsync();
+            }
 
             // create new channel
             _channel = _clientChannelFactory.CreateTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert, _heartbeatIntervalMs, _heartbeatTimeoutHintMs);
+            _channel.ConnectionLost += (ex) => TriggerReconnect();
             await _channel.ConnectAsync();
-            await _channel.CreateSessionAsync("SubscriptionMonitoringSession");
+            await _channel.CreateSessionAsync("SubscriptionMonitoringSession_" + Guid.NewGuid().ToString().Substring(0, 8));
             await _channel.ActivateSessionAsync(_userIdentity);
 
             // 3. Restore
@@ -278,6 +283,8 @@ namespace LiteUa.Client.Subscriptions
             private readonly uint _maxPublishRequests = maxPublishRequests;
             private readonly double _publishTimeoutMultiplier = publishTimeoutMultiplier;
             private readonly uint _minPublishTimeout = minPublishTimeout;
+            private Action<uint, DataValue>? _dataChangedCb;
+            private Action<Exception>? _errorCb;
 
             public void ClearLiveReference()
             {
@@ -293,6 +300,8 @@ namespace LiteUa.Client.Subscriptions
                 var sub = new Subscription(channel, _maxPublishRequests, _publishTimeoutMultiplier, _minPublishTimeout);
                 sub.DataChanged += cb;
                 sub.ConnectionLost += errCb;
+                _dataChangedCb = cb;
+                _errorCb = errCb;
                 await sub.CreateAsync(Interval);
                 LiveSubscription = sub;
             }
@@ -327,6 +336,26 @@ namespace LiteUa.Client.Subscriptions
                 finally
                 {
                     _asyncLock.Release();
+                }
+            }
+
+            public async Task StopAndClearLiveSubscriptionAsync()
+            {
+                if (LiveSubscription != null)
+                {
+
+                    if (_dataChangedCb != null) LiveSubscription.DataChanged -= _dataChangedCb;
+                    if (_errorCb != null) LiveSubscription.ConnectionLost -= _errorCb;
+
+                    try
+                    {
+                        await LiveSubscription.DisposeAsync();
+                    }
+                    catch { }
+
+                    LiveSubscription = null;
+                    _dataChangedCb = null;
+                    _errorCb = null;
                 }
             }
 
