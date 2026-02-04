@@ -1,4 +1,5 @@
 ﻿using LiteUa.BuiltIn;
+using LiteUa.Client.Events;
 using LiteUa.Stack.Discovery;
 using LiteUa.Stack.Session.Identity;
 using LiteUa.Stack.Subscription.MonitoredItem;
@@ -31,6 +32,16 @@ namespace LiteUa.Transport
         /// Gets the maximum chunk count supported by the channel.
         /// </summary>
         public uint MaxChunkCount { get; }
+
+        /// <summary>
+        /// An event that is triggered for certificate validation during the secure channel establishment.
+        /// </summary>
+        public event EventHandler<CertificateValidationEventArgs>? CertificateValidation;
+
+        /// <summary>
+        /// An event that is triggered when the connection to the server is lost.
+        /// </summary>
+        public event Action<Exception>? ConnectionLost;
 
         /// <summary>
         /// Resolves an array of relative paths to their corresponding NodeIds starting from a specified start node.

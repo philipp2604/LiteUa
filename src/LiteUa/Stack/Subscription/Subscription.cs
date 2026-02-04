@@ -313,7 +313,6 @@ namespace LiteUa.Stack.Subscription
         public async ValueTask DisposeAsync()
         {
             Stop();
-            await _channel.DisposeAsync();
             GC.SuppressFinalize(this);
         }
     }
