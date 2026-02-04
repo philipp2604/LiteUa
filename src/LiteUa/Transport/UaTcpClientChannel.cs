@@ -461,9 +461,9 @@ namespace LiteUa.Transport
 
             try
             {
-                if (_heartbeatTask != null) await _heartbeatTask;
-                if (_renewTask != null) await _renewTask;
-                if (_responseProcessorTask != null) await _responseProcessorTask;
+                //if (_heartbeatTask != null) await _heartbeatTask;
+                //if (_renewTask != null) await _renewTask;
+                //if (_responseProcessorTask != null) await _responseProcessorTask;
             }
             catch (Exception) { /* Ignore cancellations/shutdown errors */ }
 
@@ -498,11 +498,11 @@ namespace LiteUa.Transport
                 // Best effort shutdown
             }
 
-            if (_responseProcessorTask != null)
-            {
-                try { await _responseProcessorTask; } catch { }
-                _responseProcessorTask = null;
-            }
+            //if (_responseProcessorTask != null)
+            //{
+            //    try { await _responseProcessorTask; } catch { }
+             //   _responseProcessorTask = null;
+            //}
 
             _stream?.Dispose();
             _client?.Dispose();
