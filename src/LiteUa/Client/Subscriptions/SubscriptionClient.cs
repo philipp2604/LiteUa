@@ -26,8 +26,8 @@ namespace LiteUa.Client.Subscriptions
         private readonly X509Certificate2? _serverCert;
         private readonly MessageSecurityMode _securityMode;
         private readonly IUaTcpClientChannelFactory _clientChannelFactory;
-        private readonly int _supervisorIntervalMs;
-        private readonly int _reconnectIntervalMs;
+        private readonly uint _supervisorIntervalMs;
+        private readonly uint _reconnectIntervalMs;
         private readonly uint _heartbeatIntervalMs;
         private readonly uint _heartbeatTimeoutHintMs;
         private readonly uint _maxPublishRequests;
@@ -47,6 +47,7 @@ namespace LiteUa.Client.Subscriptions
 
         // Lifecycle
         private readonly TaskCompletionSource _firstConnectionTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly SemaphoreSlim _loopSignal = new(0, 1);
 
         private CancellationTokenSource? _lifecycleCts;
         private Task? _reconnectTask;
@@ -102,8 +103,8 @@ namespace LiteUa.Client.Subscriptions
             double publishTimeoutMultiplier,
             uint minPublishTimeout,
             IUaTcpClientChannelFactory clientChannelFactory,
-            int supervisorIntervalMs = 1000,
-            int reconnectIntervalMs = 5000)
+            uint supervisorIntervalMs,
+            uint reconnectIntervalMs)
         {
             ArgumentNullException.ThrowIfNullOrWhiteSpace(endpointUrl);
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationUri);
@@ -190,6 +191,7 @@ namespace LiteUa.Client.Subscriptions
                 _isReconnecting = true;
             }
             ConnectionStatusChanged?.Invoke(false);
+            _loopSignal.Release();
         }
 
         private async Task SupervisorLoop()
@@ -205,17 +207,14 @@ namespace LiteUa.Client.Subscriptions
                         _firstConnectionTcs.TrySetResult();
                         ConnectionStatusChanged?.Invoke(true);
                     }
-                    catch (Exception)
+                    catch
                     {
-                        if (!_lifecycleCts.IsCancellationRequested)
-                        {
-                            await Task.Delay(_reconnectIntervalMs, _lifecycleCts.Token);
-                        }
+                        try { await Task.Delay((int)_reconnectIntervalMs, _lifecycleCts.Token); } catch { }
                     }
                 }
                 else
                 {
-                    try { await Task.Delay(_supervisorIntervalMs, _lifecycleCts.Token); } catch { }
+                    await _loopSignal.WaitAsync(_lifecycleCts.Token);
                 }
             }
         }
@@ -226,14 +225,9 @@ namespace LiteUa.Client.Subscriptions
             if (_channel != null)
             {
                 _channel.ConnectionLost -= (ex) => TriggerReconnect();
-                try { await _channel.DisposeAsync(); } catch { }
+                var oldChannel = _channel;
+                _ = Task.Run(() => oldChannel.DisposeAsync());
                 _channel = null;
-            }
-
-            // reset Buckets
-            foreach (var bucket in _buckets.Values)
-            {
-                await bucket.StopAndClearLiveSubscriptionAsync();
             }
 
             // create new channel
@@ -244,11 +238,14 @@ namespace LiteUa.Client.Subscriptions
             await _channel.ActivateSessionAsync(_userIdentity);
 
             // 3. Restore
-            foreach (var bucket in _buckets.Values)
+            var restoreTasks = _buckets.Values.Select(async bucket =>
             {
+                bucket.ClearLiveReference();
                 await bucket.EnsureSubscriptionCreatedAsync(_channel, OnDataChanged, OnSubscriptionError);
                 await bucket.RestoreItemsAsync();
-            }
+            });
+
+            await Task.WhenAll(restoreTasks);
         }
 
         public async ValueTask DisposeAsync()

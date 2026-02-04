@@ -138,7 +138,9 @@ namespace LiteUa.Client
                 _options.Limits.MaxPublishRequestCount,
                 _options.Limits.PublishTimeoutMultiplier,
                 _options.Limits.MinPublishTimeoutMs,
-                _tcpClientChannelFactory
+                _tcpClientChannelFactory,
+                _options.Limits.SupervisorIntervalMs,
+                _options.Limits.ReconnectIntervalMs
             );
 
             _subscriptionClient.DataChanged += OnSubscriptionDataChanged;

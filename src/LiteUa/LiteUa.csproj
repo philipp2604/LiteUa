@@ -9,7 +9,7 @@
 	  <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
 	  <PackageId>philipp2604.$(AssemblyName)</PackageId>
 	  <Title>$(AssemblyName)</Title>
-	  <Version>1.2.3</Version>
+	  <Version>1.3.0</Version>
 	  <Authors>Philipp Siewert</Authors>
 	  <Product>$(PackageId)</Product>
 	  <Description>LiteUa is a native, dependency-free OPC UA client library written entirely in C# that implements the binary protocol directly on top of TCP to provide a lightweight, high-performance, and license-friendly solution.</Description>

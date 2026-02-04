@@ -33,7 +33,7 @@ namespace LiteUa.Tests.UnitTests.Client
             var result = _factory.CreateSubscriptionClient(
                 "opc.tcp://localhost:4840", "uri", "prod", "app",
                 _userIdentityMock.Object, _policyFactoryMock.Object,
-                MessageSecurityMode.None, null, null, 20000, 10000, 3, 2.0, 10000, _channelFactoryMock.Object);
+                MessageSecurityMode.None, null, null, 20000, 10000, 3, 2.0, 10000, _channelFactoryMock.Object, 5000, 5000);
 
             // Assert
             Assert.NotNull(result);

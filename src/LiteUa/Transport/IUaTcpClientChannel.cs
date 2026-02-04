@@ -95,8 +95,9 @@ namespace LiteUa.Transport
         /// <summary>
         /// Disconnects from the OPC UA server and cleans up the session and secure channel.
         /// </summary>
+        /// <param name="graceful">Indicates whether to perform a graceful disconnect.</param>
         /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
-        public Task DisconnectAsync();
+        public Task DisconnectAsync(bool graceful = true);
 
         /// <summary>
         /// Creates a standard request header used for OPC UA service calls.

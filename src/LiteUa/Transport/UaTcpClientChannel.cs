@@ -1,4 +1,5 @@
 ﻿using LiteUa.BuiltIn;
+using LiteUa.Client;
 using LiteUa.Client.Events;
 using LiteUa.Encoding;
 using LiteUa.Security;
@@ -139,112 +140,140 @@ namespace LiteUa.Transport
                 {
                     if (_isClosing && _pendingRequests.IsEmpty) break;
 
-                    byte[] headerBase = new byte[8];
-                    await ReadExactAsync(_stream!, headerBase, 8, token);
-
-                    string msgType = System.Text.Encoding.ASCII.GetString(headerBase, 0, 3);
-                    uint msgSize = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(headerBase.AsSpan(4));
-
-                    if (msgSize < 12) throw new Exception("Message size too small.");
-
-                    int remainingSize = (int)msgSize - 8;
-                    byte[] payload = new byte[remainingSize];
-                    await ReadExactAsync(_stream!, payload, remainingSize, token);
-
-                    if (msgType == "ERR")
+                    int watchdogTimeout = Timeout.Infinite;
+                    if (!_pendingRequests.IsEmpty)
                     {
-                        using var msErr = new MemoryStream(payload);
-                        var rErr = new OpcUaBinaryReader(msErr);
-                        var err = new TcpErrorMessage();
-                        err.Decode(rErr);
-                        throw new Exception($"Protocol Error: {err.Reason} (0x{err.ErrorCode:X8})");
+                        var nextExpiry = _pendingRequests.Values.Min(r => r.ExpiryTime);
+                        watchdogTimeout = (int)(nextExpiry - DateTime.UtcNow).TotalMilliseconds;
+                        if (watchdogTimeout < _heartbeatTimeoutHintMs) watchdogTimeout = (int)_heartbeatTimeoutHintMs;
                     }
 
-                    byte[] decryptedBytes;
-                    uint requestId;
 
-                    if (msgType == "OPN")
+                    using var watchdogCts = new CancellationTokenSource(watchdogTimeout);
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, watchdogCts.Token);
+
+                    try
                     {
-                        using var msOpn = new MemoryStream(payload);
-                        var rOpn = new OpcUaBinaryReader(msOpn);
-                        msOpn.Seek(4, SeekOrigin.Begin);
-                        _ = rOpn.ReadString(); _ = rOpn.ReadByteString(); _ = rOpn.ReadByteString();
-                        int headerLen = (int)msOpn.Position;
+                        byte[] headerBase = new byte[8];
+                        await ReadExactAsync(_stream!, headerBase, 8, linkedCts.Token);
 
-                        byte[] cipherText = new byte[payload.Length - headerLen];
-                        Array.Copy(payload, headerLen, cipherText, 0, cipherText.Length);
+                        string msgType = System.Text.Encoding.ASCII.GetString(headerBase, 0, 3);
+                        uint msgSize = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(headerBase.AsSpan(4));
 
-                        if (_securityMode != MessageSecurityMode.None)
+                        if (msgSize < 12) throw new Exception("Message size too small.");
+
+                        int remainingSize = (int)msgSize - 8;
+                        byte[] payload = new byte[remainingSize];
+                        await ReadExactAsync(_stream!, payload, remainingSize, linkedCts.Token);
+
+                        if (msgType == "ERR")
                         {
-                            byte[] plainBlock = _securityPolicy.DecryptAsymmetric(cipherText);
-                            requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(plainBlock.AsSpan(4, 4));
-                            decryptedBytes = plainBlock;
+                            using var msErr = new MemoryStream(payload);
+                            var rErr = new OpcUaBinaryReader(msErr);
+                            var err = new TcpErrorMessage();
+                            err.Decode(rErr);
+                            throw new Exception($"Protocol Error: {err.Reason} (0x{err.ErrorCode:X8})");
+                        }
+
+                        byte[] decryptedBytes;
+                        uint requestId;
+
+                        if (msgType == "OPN")
+                        {
+                            using var msOpn = new MemoryStream(payload);
+                            var rOpn = new OpcUaBinaryReader(msOpn);
+                            msOpn.Seek(4, SeekOrigin.Begin);
+                            _ = rOpn.ReadString(); _ = rOpn.ReadByteString(); _ = rOpn.ReadByteString();
+                            int headerLen = (int)msOpn.Position;
+
+                            byte[] cipherText = new byte[payload.Length - headerLen];
+                            Array.Copy(payload, headerLen, cipherText, 0, cipherText.Length);
+
+                            if (_securityMode != MessageSecurityMode.None)
+                            {
+                                byte[] plainBlock = _securityPolicy.DecryptAsymmetric(cipherText);
+                                requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(plainBlock.AsSpan(4, 4));
+                                decryptedBytes = plainBlock;
+                            }
+                            else
+                            {
+                                requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(cipherText.AsSpan(4, 4));
+                                decryptedBytes = cipherText;
+                            }
                         }
                         else
                         {
-                            requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(cipherText.AsSpan(4, 4));
-                            decryptedBytes = cipherText;
+                            int cryptoOffset = 8; // ChannelId + TokenId
+                            int cipherTextLen = payload.Length - cryptoOffset;
+                            byte[] cipherText = new byte[cipherTextLen];
+                            Array.Copy(payload, cryptoOffset, cipherText, 0, cipherTextLen);
+
+                            if (_securityMode == MessageSecurityMode.SignAndEncrypt)
+                            {
+                                byte[] plainBlock = _securityPolicy.DecryptSymmetric(cipherText);
+                                requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(plainBlock.AsSpan(4, 4));
+
+                                int sigSize = _securityPolicy.SymmetricSignatureSize;
+                                int dataLen = plainBlock.Length - sigSize;
+                                byte[] signature = new byte[sigSize];
+                                Array.Copy(plainBlock, dataLen, signature, 0, sigSize);
+
+                                byte[] verifyBuf = new byte[8 + 8 + dataLen];
+                                Array.Copy(headerBase, 0, verifyBuf, 0, 8);
+                                Array.Copy(payload, 0, verifyBuf, 8, 8);
+                                Array.Copy(plainBlock, 0, verifyBuf, 16, dataLen);
+
+                                if (!_securityPolicy.VerifySymmetric(verifyBuf, signature))
+                                    throw new Exception("Symmetric Signature Verification Failed.");
+
+                                byte paddingByte = plainBlock[dataLen - 1];
+                                decryptedBytes = new byte[dataLen - (paddingByte + 1)];
+                                Array.Copy(plainBlock, 0, decryptedBytes, 0, decryptedBytes.Length);
+                            }
+                            else if (_securityMode == MessageSecurityMode.Sign)
+                            {
+                                int sigSize = _securityPolicy.SymmetricSignatureSize;
+                                int dataLen = cipherText.Length - sigSize;
+                                requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(cipherText.AsSpan(4, 4));
+
+                                byte[] signature = new byte[sigSize];
+                                Array.Copy(cipherText, dataLen, signature, 0, sigSize);
+
+                                byte[] verifyBuf = new byte[8 + 8 + dataLen];
+                                Array.Copy(headerBase, 0, verifyBuf, 0, 8);
+                                Array.Copy(payload, 0, verifyBuf, 8, 8);
+                                Array.Copy(cipherText, 0, verifyBuf, 16, dataLen);
+
+                                if (!_securityPolicy.VerifySymmetric(verifyBuf, signature))
+                                    throw new Exception("Symmetric Signature Verification Failed.");
+
+                                decryptedBytes = new byte[dataLen];
+                                Array.Copy(cipherText, 0, decryptedBytes, 0, dataLen);
+                            }
+                            else
+                            {
+                                requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(cipherText.AsSpan(4, 4));
+                                decryptedBytes = cipherText;
+                            }
+                        }
+
+                        if (_pendingRequests.TryRemove(requestId, out var pending))
+                        {
+                            pending.Tcs.TrySetResult(decryptedBytes);
                         }
                     }
-                    else
+
+                    catch (OperationCanceledException) when (watchdogCts.IsCancellationRequested)
                     {
-                        int cryptoOffset = 8; // ChannelId + TokenId
-                        int cipherTextLen = payload.Length - cryptoOffset;
-                        byte[] cipherText = new byte[cipherTextLen];
-                        Array.Copy(payload, cryptoOffset, cipherText, 0, cipherTextLen);
+                        // The watchdog fired. Check if any request is actually expired.
+                        var now = DateTime.UtcNow;
+                        var expiredRequests = _pendingRequests.Values.Where(r => r.ExpiryTime <= now).ToList();
 
-                        if (_securityMode == MessageSecurityMode.SignAndEncrypt)
+                        if (expiredRequests.Count > 0)
                         {
-                            byte[] plainBlock = _securityPolicy.DecryptSymmetric(cipherText);
-                            requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(plainBlock.AsSpan(4, 4));
-
-                            int sigSize = _securityPolicy.SymmetricSignatureSize;
-                            int dataLen = plainBlock.Length - sigSize;
-                            byte[] signature = new byte[sigSize];
-                            Array.Copy(plainBlock, dataLen, signature, 0, sigSize);
-
-                            byte[] verifyBuf = new byte[8 + 8 + dataLen];
-                            Array.Copy(headerBase, 0, verifyBuf, 0, 8);
-                            Array.Copy(payload, 0, verifyBuf, 8, 8);
-                            Array.Copy(plainBlock, 0, verifyBuf, 16, dataLen);
-
-                            if (!_securityPolicy.VerifySymmetric(verifyBuf, signature))
-                                throw new Exception("Symmetric Signature Verification Failed.");
-
-                            byte paddingByte = plainBlock[dataLen - 1];
-                            decryptedBytes = new byte[dataLen - (paddingByte + 1)];
-                            Array.Copy(plainBlock, 0, decryptedBytes, 0, decryptedBytes.Length);
+                            throw new Exception($"Server failed to respond to {expiredRequests.Count} request(s) within deadlines. Connection dead.");
                         }
-                        else if (_securityMode == MessageSecurityMode.Sign)
-                        {
-                            int sigSize = _securityPolicy.SymmetricSignatureSize;
-                            int dataLen = cipherText.Length - sigSize;
-                            requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(cipherText.AsSpan(4, 4));
-
-                            byte[] signature = new byte[sigSize];
-                            Array.Copy(cipherText, dataLen, signature, 0, sigSize);
-
-                            byte[] verifyBuf = new byte[8 + 8 + dataLen];
-                            Array.Copy(headerBase, 0, verifyBuf, 0, 8);
-                            Array.Copy(payload, 0, verifyBuf, 8, 8);
-                            Array.Copy(cipherText, 0, verifyBuf, 16, dataLen);
-
-                            if (!_securityPolicy.VerifySymmetric(verifyBuf, signature))
-                                throw new Exception("Symmetric Signature Verification Failed.");
-
-                            decryptedBytes = new byte[dataLen];
-                            Array.Copy(cipherText, 0, decryptedBytes, 0, dataLen);
-                        }
-                        else
-                        {
-                            requestId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(cipherText.AsSpan(4, 4));
-                            decryptedBytes = cipherText;
-                        }
-                    }
-
-                    if (_pendingRequests.TryRemove(requestId, out var pending))
-                    {
-                        pending.Tcs.TrySetResult(decryptedBytes);
+                        continue;
                     }
                 }
             }
@@ -255,7 +284,8 @@ namespace LiteUa.Transport
                     foreach (var req in _pendingRequests.Values)
                         req.Tcs.TrySetException(ex);
                     _pendingRequests.Clear();
-                    throw;
+
+                    ConnectionLost?.Invoke(ex);
                 }
             }
         }
@@ -450,60 +480,45 @@ namespace LiteUa.Transport
             return response.Results;
         }
 
-        public async Task DisconnectAsync()
+        public async Task DisconnectAsync(bool graceful = true)
         {
-            if (_stream == null) return;
-
             _isClosing = true;
-
             _heartbeatCts?.Cancel();
             _renewCts?.Cancel();
             _channelCts?.Cancel();
 
-            try
+            if(graceful && _stream != null)
             {
-                //if (_heartbeatTask != null) await _heartbeatTask;
-                //if (_renewTask != null) await _renewTask;
-                //if (_responseProcessorTask != null) await _responseProcessorTask;
-            }
-            catch (Exception) { /* Ignore cancellations/shutdown errors */ }
-
-            try
-            {
-                if (_authenticationToken != null && _authenticationToken.NumericIdentifier != 0)
+                try
                 {
-                    var req = new CloseSessionRequest { RequestHeader = CreateRequestHeader(), DeleteSubscriptions = true };
-                    using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(2000));
-                    try
+                    if (_authenticationToken != null && _authenticationToken.NumericIdentifier != 0)
                     {
-                        await SendRequestAsync<CloseSessionRequest, CloseSessionResponse>(req, cts.Token);
+                        var req = new CloseSessionRequest { RequestHeader = CreateRequestHeader(), DeleteSubscriptions = true };
+                        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(2000));
+                        try
+                        {
+                            await SendRequestAsync<CloseSessionRequest, CloseSessionResponse>(req, cts.Token);
+                        }
+                        catch { /* Session might already be closed or timed out */ }
+                        _authenticationToken = new NodeId(0);
                     }
-                    catch { /* Session might already be closed or timed out */ }
-                    _authenticationToken = new NodeId(0);
+
+                    if (SecureChannelId != 0)
+                    {
+                        var req = new CloseSecureChannelRequest { RequestHeader = CreateRequestHeader() };
+                        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1000));
+                        try
+                        {
+                            await SendRequestAsync<CloseSecureChannelRequest, CloseSecureChannelResponse>(req, cts.Token);
+                        }
+                        catch { /* Channel might already be closed by server */ }
+                        SecureChannelId = 0;
+                    }
                 }
-
-                if (SecureChannelId != 0)
+                catch
                 {
-                    var req = new CloseSecureChannelRequest { RequestHeader = CreateRequestHeader() };
-                    using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1000));
-                    try
-                    {
-                        await SendRequestAsync<CloseSecureChannelRequest, CloseSecureChannelResponse>(req, cts.Token);
-                    }
-                    catch { /* Channel might already be closed by server */ }
-                    SecureChannelId = 0;
                 }
             }
-            catch (Exception)
-            {
-                // Best effort shutdown
-            }
-
-            //if (_responseProcessorTask != null)
-            //{
-            //    try { await _responseProcessorTask; } catch { }
-             //   _responseProcessorTask = null;
-            //}
 
             _stream?.Dispose();
             _client?.Dispose();
@@ -1312,12 +1327,37 @@ namespace LiteUa.Transport
             if (_stream == null || (_isClosing && !isShutdownRequest))
                 throw new InvalidOperationException("Channel is not connected or is closing.");
 
-            uint handle = (uint)Interlocked.Increment(ref _requestId);
-            //uint handle = (uint)_requestId;
-            var pending = new PendingRequest();
-            _pendingRequests.TryAdd(handle, pending);
+            // Initialize to avoid "unassigned variable" compiler error
+            uint handle = 0;
+
+            // 1. Acquire the transport lock to ensure wire-order integrity (Monotonic IDs and Sequences)
+            if (!await _lock.WaitAsync((int)_heartbeatTimeoutHintMs, cancellationToken))
+            {
+                throw new TimeoutException("Could not acquire transport lock. Transport is likely hung.");
+            }
+
             try
             {
+                // 2. Assign IDs inside the lock to ensure monotonic order on the wire
+                handle = (uint)Interlocked.Increment(ref _requestId);
+                uint seq = _sequenceNumber++;
+
+                // 3. Extract the TimeoutHint to set a correct watchdog expiry
+                uint timeoutHint = 10000; // Default 10s
+                var headerProp = request?.GetType().GetProperty("RequestHeader");
+                if (headerProp != null && headerProp.GetValue(request) is RequestHeader rh)
+                {
+                    timeoutHint = rh.TimeoutHint;
+                }
+
+                var pendingRequest = new PendingRequest()
+                {
+                    // Add a 2 second grace period to the protocol timeout hint
+                    ExpiryTime = DateTime.UtcNow.AddMilliseconds(timeoutHint + 2000)
+                };
+                _pendingRequests.TryAdd(handle, pendingRequest);
+
+                // 4. Encode the request body
                 byte[] bodyBytes;
                 using (var ms = new MemoryStream())
                 {
@@ -1346,30 +1386,39 @@ namespace LiteUa.Transport
                     bodyBytes = ms.ToArray();
                 }
 
-                await _lock.WaitAsync(cancellationToken);
-                try
-                {
-                    // Assign sequence number inside the lock to ensure wire order
-                    uint seq = _sequenceNumber++;
+                // 5. Send the final packet
+                byte[] finalPacket = request is OpenSecureChannelRequest
+                    ? PrepareOpenSecureChannelPacket(bodyBytes, handle, seq)
+                    : PrepareSymmetricPacket(bodyBytes, handle, seq, request is CloseSecureChannelRequest);
 
-                    byte[] finalPacket = request is OpenSecureChannelRequest
-                        ? PrepareOpenSecureChannelPacket(bodyBytes, handle, seq)
-                        : PrepareSymmetricPacket(bodyBytes, handle, seq, request is CloseSecureChannelRequest);
+                await _stream!.WriteAsync(finalPacket, cancellationToken);
+            }
+            catch
+            {
+                // Cleanup if sending failed before we started waiting for response
+                if (handle != 0) _pendingRequests.TryRemove(handle, out _);
+                throw;
+            }
+            finally
+            {
+                _lock.Release();
+            }
 
-                    await _stream!.WriteAsync(finalPacket, cancellationToken);
-                }
-                finally
-                {
-                    _lock.Release();
-                }
+            // 6. If this was a secure channel close, we don't expect a response
+            if (request is CloseSecureChannelRequest)
+            {
+                return new TResponse();
+            }
 
-                if (request is CloseSecureChannelRequest)
-                {
-                    return new TResponse();
-                }
-
+            // 7. Await the response from the ProcessResponsesAsync loop
+            try
+            {
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _channelCts!.Token);
-                byte[] decryptedBytes = await pending.Tcs.Task.WaitAsync(linkedCts.Token);
+
+                if (!_pendingRequests.TryGetValue(handle, out var pendingRef))
+                    throw new Exception("Request state lost before response could be processed.");
+
+                byte[] decryptedBytes = await pendingRef.Tcs.Task.WaitAsync(linkedCts.Token);
 
                 using var msRes = new MemoryStream(decryptedBytes);
                 var r = new OpcUaBinaryReader(msRes);
@@ -1377,12 +1426,14 @@ namespace LiteUa.Transport
                 r.ReadUInt32(); // RequestId
                 NodeId typeId = NodeId.Decode(r);
 
+                // Check for ServiceFault (TypeId 397)
                 if (typeId.NumericIdentifier == 397)
                 {
                     var fault = ResponseHeader.Decode(r);
                     throw new Exception($"Server returned ServiceFault: 0x{fault.ServiceResult:X8}");
                 }
 
+                // 8. Decode the response body
                 var response = new TResponse();
                 if (response is ReadResponse resRr) resRr.Decode(r);
                 else if (response is WriteResponse resWr) resWr.Decode(r);
@@ -1408,10 +1459,10 @@ namespace LiteUa.Transport
 
                 return response;
             }
-            catch
+            finally
             {
-                _pendingRequests.TryRemove(handle, out _);
-                throw;
+                // Always ensure handle is removed to prevent memory leaks
+                if (handle != 0) _pendingRequests.TryRemove(handle, out _);
             }
         }
 
@@ -1560,8 +1611,26 @@ namespace LiteUa.Transport
 
         protected virtual async Task<Stream> CreateStreamAsync(string host, int port, CancellationToken ct)
         {
-            _client = new TcpClient();
-            await _client.ConnectAsync(host, port, ct);
+            var cancellationCompletionSource = new TaskCompletionSource<bool>();
+            using (var cts = new CancellationTokenSource((int)_heartbeatTimeoutHintMs))
+            {
+                _client = new TcpClient
+                {
+                    ReceiveTimeout = (int)_heartbeatTimeoutHintMs,
+                    SendTimeout = (int)_heartbeatTimeoutHintMs
+                };
+
+                var task = _client.ConnectAsync(host, port);
+
+                using (cts.Token.Register(() => cancellationCompletionSource.TrySetResult(true)))
+                {
+                    if (task != await Task.WhenAny(task, cancellationCompletionSource.Task))
+                    {
+                        throw new OperationCanceledException(cts.Token);
+                    }
+                }
+            }
+
             return _client.GetStream();
         }
 
