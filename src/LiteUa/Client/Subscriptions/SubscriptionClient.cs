@@ -222,35 +222,74 @@ namespace LiteUa.Client.Subscriptions
 
         private async Task ConnectAndRestoreAsync()
         {
-            if (_channel != null)
+            var oldChannel = _channel;
+            var newChannel = _clientChannelFactory.CreateTcpClientChannel(
+                _endpointUrl,
+                _applicationUri,
+                _productUri,
+                _applicationName,
+                _securityPolicyFactory,
+                _securityMode,
+                _clientCert,
+                _serverCert,
+                _heartbeatIntervalMs,
+                _heartbeatTimeoutHintMs
+            );
+
+            _channel = newChannel;
+
+            if (oldChannel != null)
             {
-                var deadChannel = _channel;
-                _channel = null; // Detach immediately
-
-                deadChannel.ConnectionLost -= (ex) => TriggerReconnect();
-
-                // Fire-and-forget disposal. Do not await.
-                // We just want to close the socket to free ports, we don't care about UA protocol niceties now.
-                _ = Task.Run(() => deadChannel.Dispose());
+                oldChannel.ConnectionLost -= (ex) => TriggerReconnect();
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await oldChannel.DisposeAsync();
+                    }
+                    catch
+                    {
+                    }
+                });
             }
 
-            // create new channel
-            _channel = _clientChannelFactory.CreateTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert, _heartbeatIntervalMs, _heartbeatTimeoutHintMs);
+            if (_lifecycleCts == null || _lifecycleCts.IsCancellationRequested)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await newChannel.DisposeAsync();
+                    }
+                    catch
+                    {
+                    }
+                });
+                return;
+            }
+
             _channel.ConnectionLost += (ex) => TriggerReconnect();
 
             using var connectCts = new CancellationTokenSource((int)_heartbeatTimeoutHintMs);
 
-            await _channel.ConnectAsync();
-            await _channel.CreateSessionAsync(string.Concat("SubscriptionMonitoringSession_", Guid.NewGuid().ToString().AsSpan(0, 8)));
-            await _channel.ActivateSessionAsync(_userIdentity);
+            try
+            {
+                await _channel.ConnectAsync();
+                await _channel.CreateSessionAsync(string.Concat("SubscriptionMonitoringSession_", Guid.NewGuid().ToString().AsSpan(0, 8)));
+                await _channel.ActivateSessionAsync(_userIdentity);
 
-            // 3. Restore
-            foreach (var b in _buckets.Values) b.ClearLiveReference();
+                // 3. Restore
+                foreach (var b in _buckets.Values) b.ClearLiveReference();
 
-            await Task.WhenAll(_buckets.Values.Select(async bucket => {
-                await bucket.EnsureSubscriptionCreatedAsync(_channel, OnDataChanged, OnSubscriptionError);
-                await bucket.RestoreItemsAsync();
-            }));
+                await Task.WhenAll(_buckets.Values.Select(async bucket => {
+                    await bucket.EnsureSubscriptionCreatedAsync(_channel, OnDataChanged, OnSubscriptionError);
+                    await bucket.RestoreItemsAsync();
+                }));
+            }
+            catch
+            {
+                throw;
+            }
         }
 
         public async ValueTask DisposeAsync()
