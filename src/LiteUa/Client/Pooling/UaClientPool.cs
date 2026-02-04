@@ -97,9 +97,6 @@ namespace LiteUa.Client.Pooling
                     client.Dispose();
                 }
                 catch { /* ignore */ }
-
-                // Release the semaphore so new connections can be opened later
-                _semaphore.Release();
             }
         }
 
@@ -108,25 +105,27 @@ namespace LiteUa.Client.Pooling
             // Wait for idle client
             await _semaphore.WaitAsync();
 
-            // Try to get an existing client
-            while (_clients.TryTake(out IUaTcpClientChannel? client))
-            {
-                if (client.IsConnected)
-                {
-                    return new PooledUaClient(client, this);
-                }
-
-                // Client is dead/ghost. Dispose it and release slot to try again.
-                client.Dispose();
-                _semaphore.Release();
-
-                // Wait for the slot we just released (to maintain max size logic)
-                await _semaphore.WaitAsync();
-            }
-
-            // 3. No healthy clients available, create a new one
             try
             {
+                // Try to get an existing client
+                while (_clients.TryTake(out IUaTcpClientChannel? client))
+                {
+                    if (client.IsConnected)
+                    {
+                        return new PooledUaClient(client, this);
+                    }
+
+                    // Client is dead/ghost. Dispose it and release slot to try again.
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await client.DisposeAsync();
+                        }
+                        catch { }
+                    });
+                }
+
                 var newClient = await CreateNewClientAsync();
                 return new PooledUaClient(newClient, this);
             }
