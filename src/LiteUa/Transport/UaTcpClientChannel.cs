@@ -71,6 +71,7 @@ namespace LiteUa.Transport
         private byte[]? _sessionClientNonce;
 
         public event EventHandler<CertificateValidationEventArgs>? CertificateValidation;
+        public event Action<Exception>? ConnectionLost;
 
         // --- Negotiated Parameters ---
         public uint SendBufferSize { get; private set; }
@@ -694,6 +695,9 @@ namespace LiteUa.Transport
 
             var response = await SendRequestAsync<CreateSessionRequest, CreateSessionResponse>(req, cancellationToken);
 
+            if (response.ResponseHeader?.ServiceResult != 0)
+                throw new Exception($"CreateSession failed: 0x{response.ResponseHeader?.ServiceResult:X8}");
+
             _authenticationToken = response.AuthenticationToken ?? new NodeId(0, 0);
             _sessionServerNonce = response.ServerNonce;
 
@@ -748,6 +752,9 @@ namespace LiteUa.Transport
 
             var response = await SendRequestAsync<ActivateSessionRequest, ActivateSessionResponse>(req, cancellationToken);
 
+            if (response.ResponseHeader?.ServiceResult != 0)
+                throw new Exception($"CreateSession failed: 0x{response.ResponseHeader?.ServiceResult:X8}");
+
             if (response.ServerNonce != null && response.ServerNonce.Length > 0)
                 _sessionServerNonce = response.ServerNonce;
 
@@ -777,14 +784,21 @@ namespace LiteUa.Transport
                             };
                             readReq.RequestHeader.TimeoutHint = (uint)_heartbeatTimeoutHintMs;
 
-                            await SendRequestAsync<ReadRequest, ReadResponse>(readReq, token);
+                            using var timeoutCts = new CancellationTokenSource((int)_heartbeatTimeoutHintMs);
+                            using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(token, timeoutCts.Token);
+
+                            await SendRequestAsync<ReadRequest, ReadResponse>(readReq, requestCts.Token);
                         }
                     }
                 }
                 catch (OperationCanceledException) { }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    var wasClosing = _isClosing;
                     await DisconnectAsync();
+
+                    if(!wasClosing)
+                        ConnectionLost?.Invoke(ex);
                 }
             }, _heartbeatCts.Token);
         }
