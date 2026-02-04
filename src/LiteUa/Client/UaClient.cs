@@ -148,7 +148,14 @@ namespace LiteUa.Client
             {
                 if (!connected)
                 {
-                    _pool?.Clear();
+                    try
+                    {
+                        _pool?.Clear();
+                    }
+                    catch (Exception)
+                    {
+                        /// TODO: Log this?
+                    }
                 }
                 ConnectionStatusChanged?.Invoke(connected);
             };
