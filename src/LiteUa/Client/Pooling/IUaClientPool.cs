@@ -6,6 +6,11 @@
     public interface IUaClientPool : IDisposable, IAsyncDisposable
     {
         /// <summary>
+        /// Clears the pool by disposing all idle clients.
+        /// </summary>
+        public void Clear();
+
+        /// <summary>
         /// Rents an UaTcpClientChannel from the pool. If none are available, a new one is created up to the max pool size.
         /// </summary>
         /// <returns>An instance of <see cref="PooledUaClient"/>.</returns>

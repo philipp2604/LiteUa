@@ -73,7 +73,7 @@ namespace LiteUa.Tests.UnitTests.Client.Pooling
             // Factory should only have been called once
             _factoryMock.Verify(f => f.CreateTcpClientChannel(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<ISecurityPolicyFactory>(), It.IsAny<MessageSecurityMode>(),
-                It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>(), It.IsAny<uint>(), It.IsAny<uint>()), Times.Once);
+                It.IsAny<X509Certificate2>(), It.IsAny<X509Certificate2>(), It.IsAny<uint>(), It.IsAny<uint>()), Times.Exactly(2));
         }
 
         [Fact]

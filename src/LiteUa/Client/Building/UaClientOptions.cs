@@ -182,6 +182,16 @@ namespace LiteUa.Client.Building
             /// Gets or sets the minimum publish timeout in milliseconds to ensure timely processing of publish requests.
             /// </summary>
             public uint MinPublishTimeoutMs { get; set; } = 10000;
+
+            /// <summary>
+            /// Gets or sets the interval in milliseconds for the supervisor loop to check connection status.
+            /// </summary>
+            public uint SupervisorIntervalMs { get; set; } = 5000;
+
+            /// <summary>
+            /// Gets or sets the interval in milliseconds to wait before attempting to reconnect after a disconnection.
+            /// </summary>
+            public uint ReconnectIntervalMs { get; set; } = 1000;
         }
     }
 }

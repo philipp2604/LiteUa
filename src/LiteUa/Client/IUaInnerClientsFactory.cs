@@ -47,8 +47,8 @@ namespace LiteUa.Client
             double publishTimeoutMultiplier,
             uint minPubsubTimeoutMs,
             IUaTcpClientChannelFactory clientChannelFactory,
-            int supervisorIntervalMs = 1000,
-            int reconnectIntervalMs = 5000);
+            uint supervisorIntervalMs,
+            uint reconnectIntervalMs);
 
         /// <summary>
         /// Creates a new instance of <see cref="IDiscoveryClient">.

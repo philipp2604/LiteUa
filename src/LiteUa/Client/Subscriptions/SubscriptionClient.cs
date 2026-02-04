@@ -26,8 +26,8 @@ namespace LiteUa.Client.Subscriptions
         private readonly X509Certificate2? _serverCert;
         private readonly MessageSecurityMode _securityMode;
         private readonly IUaTcpClientChannelFactory _clientChannelFactory;
-        private readonly int _supervisorIntervalMs;
-        private readonly int _reconnectIntervalMs;
+        private readonly uint _supervisorIntervalMs;
+        private readonly uint _reconnectIntervalMs;
         private readonly uint _heartbeatIntervalMs;
         private readonly uint _heartbeatTimeoutHintMs;
         private readonly uint _maxPublishRequests;
@@ -47,6 +47,7 @@ namespace LiteUa.Client.Subscriptions
 
         // Lifecycle
         private readonly TaskCompletionSource _firstConnectionTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly SemaphoreSlim _loopSignal = new(0, 1);
 
         private CancellationTokenSource? _lifecycleCts;
         private Task? _reconnectTask;
@@ -102,8 +103,8 @@ namespace LiteUa.Client.Subscriptions
             double publishTimeoutMultiplier,
             uint minPublishTimeout,
             IUaTcpClientChannelFactory clientChannelFactory,
-            int supervisorIntervalMs = 1000,
-            int reconnectIntervalMs = 5000)
+            uint supervisorIntervalMs,
+            uint reconnectIntervalMs)
         {
             ArgumentNullException.ThrowIfNullOrWhiteSpace(endpointUrl);
             ArgumentNullException.ThrowIfNullOrWhiteSpace(applicationUri);
@@ -190,6 +191,7 @@ namespace LiteUa.Client.Subscriptions
                 _isReconnecting = true;
             }
             ConnectionStatusChanged?.Invoke(false);
+            _loopSignal.Release();
         }
 
         private async Task SupervisorLoop()
@@ -203,51 +205,90 @@ namespace LiteUa.Client.Subscriptions
                         await ConnectAndRestoreAsync();
                         lock (_reconnectLock) { _isConnected = true; _isReconnecting = false; }
                         _firstConnectionTcs.TrySetResult();
+                         
                         ConnectionStatusChanged?.Invoke(true);
                     }
-                    catch (Exception)
+                    catch
                     {
-                        if (!_lifecycleCts.IsCancellationRequested)
-                        {
-                            await Task.Delay(_reconnectIntervalMs, _lifecycleCts.Token);
-                        }
+                        try { await Task.Delay((int)_reconnectIntervalMs, _lifecycleCts.Token); } catch { }
                     }
                 }
                 else
                 {
-                    try { await Task.Delay(_supervisorIntervalMs, _lifecycleCts.Token); } catch { }
+                    await _loopSignal.WaitAsync(_lifecycleCts.Token);
                 }
             }
         }
 
         private async Task ConnectAndRestoreAsync()
         {
-            // close old channel
-            if (_channel != null)
+            var oldChannel = _channel;
+            var newChannel = _clientChannelFactory.CreateTcpClientChannel(
+                _endpointUrl,
+                _applicationUri,
+                _productUri,
+                _applicationName,
+                _securityPolicyFactory,
+                _securityMode,
+                _clientCert,
+                _serverCert,
+                _heartbeatIntervalMs,
+                _heartbeatTimeoutHintMs
+            );
+
+            _channel = newChannel;
+
+            if (oldChannel != null)
             {
-                _channel.ConnectionLost -= (ex) => TriggerReconnect();
-                try { await _channel.DisposeAsync(); } catch { }
-                _channel = null;
+                oldChannel.ConnectionLost -= (ex) => TriggerReconnect();
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await oldChannel.DisposeAsync();
+                    }
+                    catch
+                    {
+                    }
+                });
             }
 
-            // reset Buckets
-            foreach (var bucket in _buckets.Values)
+            if (_lifecycleCts == null || _lifecycleCts.IsCancellationRequested)
             {
-                await bucket.StopAndClearLiveSubscriptionAsync();
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await newChannel.DisposeAsync();
+                    }
+                    catch
+                    {
+                    }
+                });
+                return;
             }
 
-            // create new channel
-            _channel = _clientChannelFactory.CreateTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert, _heartbeatIntervalMs, _heartbeatTimeoutHintMs);
             _channel.ConnectionLost += (ex) => TriggerReconnect();
-            await _channel.ConnectAsync();
-            await _channel.CreateSessionAsync("SubscriptionMonitoringSession_" + Guid.NewGuid().ToString().Substring(0, 8));
-            await _channel.ActivateSessionAsync(_userIdentity);
 
-            // 3. Restore
-            foreach (var bucket in _buckets.Values)
+            using var connectCts = new CancellationTokenSource((int)_heartbeatTimeoutHintMs);
+
+            try
             {
-                await bucket.EnsureSubscriptionCreatedAsync(_channel, OnDataChanged, OnSubscriptionError);
-                await bucket.RestoreItemsAsync();
+                await _channel.ConnectAsync();
+                await _channel.CreateSessionAsync(string.Concat("SubscriptionMonitoringSession_", Guid.NewGuid().ToString().AsSpan(0, 8)));
+                await _channel.ActivateSessionAsync(_userIdentity);
+
+                // 3. Restore
+                foreach (var b in _buckets.Values) b.ClearLiveReference();
+
+                await Task.WhenAll(_buckets.Values.Select(async bucket => {
+                    await bucket.EnsureSubscriptionCreatedAsync(_channel, OnDataChanged, OnSubscriptionError);
+                    await bucket.RestoreItemsAsync();
+                }));
+            }
+            catch
+            {
+                throw;
             }
         }
 
