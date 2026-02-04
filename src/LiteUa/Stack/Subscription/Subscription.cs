@@ -192,7 +192,7 @@ namespace LiteUa.Stack.Subscription
             SubscriptionAcknowledgement[] acksToConfirm;
             lock (_unacknowledgedSequences)
             {
-                acksToConfirm = _unacknowledgedSequences.Values.ToArray();
+                acksToConfirm = [.. _unacknowledgedSequences.Values];
                 _unacknowledgedSequences.Clear();
             }
 

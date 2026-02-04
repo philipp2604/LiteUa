@@ -52,13 +52,13 @@ namespace LiteUa.Transport
 
         // --- Renewal Management ---
         private CancellationTokenSource? _renewCts;
-
+        private long _lastPacketTick = Environment.TickCount64;
         private uint _heartbeatIntervalMs;
         private readonly NodeId _heartbeatNodeId = new(2258);
         private readonly uint _heartbeatTimeoutHintMs;
         private CancellationTokenSource? _heartbeatCts;
         private Task? _heartbeatTask;
-
+        private CancellationTokenSource _requestAddedCts = new();
         private Task? _renewTask;
 
         // --- Configuration / Security ---
@@ -80,6 +80,8 @@ namespace LiteUa.Transport
         public uint ReceiveBufferSize { get; private set; }
         public uint MaxMessageSize { get; private set; }
         public uint MaxChunkCount { get; private set; }
+
+        public bool IsConnected => _stream != null && SecureChannelId != 0 && !_isClosing;
 
         /// <summary>
         /// Creates a new instance of the <see cref="UaTcpClientChannel"/> class.
@@ -131,6 +133,33 @@ namespace LiteUa.Transport
             _heartbeatTimeoutHintMs = heartbeatTimeoutHintMs;
         }
 
+        private async Task WatchdogLoop(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                // Check frequency: 1/4 of timeout or min 500ms
+                int checkDelay = (int)Math.Max(_heartbeatTimeoutHintMs / 4, 500);
+                await Task.Delay(checkDelay, token);
+
+                long idleTime = Environment.TickCount64 - _lastPacketTick;
+
+                // Threshold: Timeout Hint + small grace (e.g. 500ms)
+                if (idleTime > (_heartbeatTimeoutHintMs + 1000))
+                {
+                    // KILL SWITCH
+                    if (!_isClosing && _stream != null)
+                    {
+                        // This forces ProcessResponsesAsync to throw ObjectDisposedException immediately
+                        _client?.Close();
+                        _stream?.Close();
+                        // Trigger the event so Supervisor knows ASAP
+                        ConnectionLost?.Invoke(new TimeoutException($"Watchdog: No data for {idleTime}ms"));
+                        break;
+                    }
+                }
+            }
+        }
+
         private async Task ProcessResponsesAsync()
         {
             var token = _channelCts!.Token;
@@ -140,7 +169,9 @@ namespace LiteUa.Transport
                 {
                     if (_isClosing && _pendingRequests.IsEmpty) break;
 
-                    int watchdogTimeout = Timeout.Infinite;
+                    if (_requestAddedCts.IsCancellationRequested) _requestAddedCts = new CancellationTokenSource();
+
+                    int watchdogTimeout = (int)_heartbeatIntervalMs;
                     if (!_pendingRequests.IsEmpty)
                     {
                         var nextExpiry = _pendingRequests.Values.Min(r => r.ExpiryTime);
@@ -150,12 +181,13 @@ namespace LiteUa.Transport
 
 
                     using var watchdogCts = new CancellationTokenSource(watchdogTimeout);
-                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, watchdogCts.Token);
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, watchdogCts.Token, _requestAddedCts.Token);
 
                     try
                     {
                         byte[] headerBase = new byte[8];
                         await ReadExactAsync(_stream!, headerBase, 8, linkedCts.Token);
+                        _lastPacketTick = Environment.TickCount64;
 
                         string msgType = System.Text.Encoding.ASCII.GetString(headerBase, 0, 3);
                         uint msgSize = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(headerBase.AsSpan(4));
@@ -263,15 +295,11 @@ namespace LiteUa.Transport
                         }
                     }
 
-                    catch (OperationCanceledException) when (watchdogCts.IsCancellationRequested)
+                    catch (OperationCanceledException)
                     {
-                        // The watchdog fired. Check if any request is actually expired.
-                        var now = DateTime.UtcNow;
-                        var expiredRequests = _pendingRequests.Values.Where(r => r.ExpiryTime <= now).ToList();
-
-                        if (expiredRequests.Count > 0)
+                        if (watchdogCts.IsCancellationRequested && _pendingRequests.Values.Any(r => r.ExpiryTime <= DateTime.UtcNow))
                         {
-                            throw new Exception($"Server failed to respond to {expiredRequests.Count} request(s) within deadlines. Connection dead.");
+                            throw new Exception("Watchdog: Server Deadline Exceeded.");
                         }
                         continue;
                     }
@@ -281,10 +309,12 @@ namespace LiteUa.Transport
             {
                 if (!_isClosing)
                 {
-                    foreach (var req in _pendingRequests.Values)
-                        req.Tcs.TrySetException(ex);
-                    _pendingRequests.Clear();
+                    // FORCE CLOSE the physical client to unblock any pending WriteAsync/ReadAsync in other threads
+                    _client?.Close();
+                    _stream?.Close();
 
+                    foreach (var req in _pendingRequests.Values) req.Tcs.TrySetException(ex);
+                    _pendingRequests.Clear();
                     ConnectionLost?.Invoke(ex);
                 }
             }
@@ -656,7 +686,7 @@ namespace LiteUa.Transport
                 AuthenticationToken = _authenticationToken,
                 Timestamp = DateTime.UtcNow,
                 RequestHandle = nextHandle,
-                TimeoutHint = 10000
+                TimeoutHint = _heartbeatIntervalMs
             };
         }
 
@@ -773,11 +803,13 @@ namespace LiteUa.Transport
             if (response.ServerNonce != null && response.ServerNonce.Length > 0)
                 _sessionServerNonce = response.ServerNonce;
 
+            _ = WatchdogLoop(cancellationToken);
             StartHeartbeat();
         }
 
         private void StartHeartbeat()
         {
+
             _heartbeatCts?.Cancel();
             _heartbeatCts = new CancellationTokenSource();
 
@@ -1330,7 +1362,9 @@ namespace LiteUa.Transport
             // Initialize to avoid "unassigned variable" compiler error
             uint handle = 0;
 
-            // 1. Acquire the transport lock to ensure wire-order integrity (Monotonic IDs and Sequences)
+            // 1. Acquire the transport lock
+            // We use a relatively short timeout here (e.g. HeartbeatTimeout) because if we can't get the lock,
+            // it means another thread is stuck writing, implying the connection is already in trouble.
             if (!await _lock.WaitAsync((int)_heartbeatTimeoutHintMs, cancellationToken))
             {
                 throw new TimeoutException("Could not acquire transport lock. Transport is likely hung.");
@@ -1342,8 +1376,8 @@ namespace LiteUa.Transport
                 handle = (uint)Interlocked.Increment(ref _requestId);
                 uint seq = _sequenceNumber++;
 
-                // 3. Extract the TimeoutHint to set a correct watchdog expiry
-                uint timeoutHint = 10000; // Default 10s
+                // 3. Extract the TimeoutHint
+                uint timeoutHint = _heartbeatIntervalMs;
                 var headerProp = request?.GetType().GetProperty("RequestHeader");
                 if (headerProp != null && headerProp.GetValue(request) is RequestHeader rh)
                 {
@@ -1352,7 +1386,7 @@ namespace LiteUa.Transport
 
                 var pendingRequest = new PendingRequest()
                 {
-                    // Add a 2 second grace period to the protocol timeout hint
+                    // Set expiry. 
                     ExpiryTime = DateTime.UtcNow.AddMilliseconds(timeoutHint + 2000)
                 };
                 _pendingRequests.TryAdd(handle, pendingRequest);
@@ -1386,12 +1420,33 @@ namespace LiteUa.Transport
                     bodyBytes = ms.ToArray();
                 }
 
-                // 5. Send the final packet
+                // 5. Prepare and Send the final packet
                 byte[] finalPacket = request is OpenSecureChannelRequest
                     ? PrepareOpenSecureChannelPacket(bodyBytes, handle, seq)
                     : PrepareSymmetricPacket(bodyBytes, handle, seq, request is CloseSecureChannelRequest);
 
-                await _stream!.WriteAsync(finalPacket, cancellationToken);
+                // --- NEW WRITE TIMEOUT LOGIC STARTS HERE ---
+                // We wrap the WriteAsync in a timeout. If the OS buffer is full (cable pulled),
+                // WriteAsync will hang. We must kill it to release the lock.
+                using var writeTimeoutCts = new CancellationTokenSource(2000); // 2s hard limit for writing
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, writeTimeoutCts.Token);
+
+                try
+                {
+                    await _stream!.WriteAsync(finalPacket, linkedCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    if (writeTimeoutCts.IsCancellationRequested)
+                    {
+                        // The write timed out. The connection is physically broken.
+                        // We MUST close the client to unblock any other threads waiting on this socket.
+                        try { _client?.Close(); } catch { }
+                        throw new IOException("Socket Write Timed Out - Connection assumed dead.");
+                    }
+                    throw; // It was cancelled by the user token
+                }
+                // --- NEW WRITE TIMEOUT LOGIC ENDS HERE ---
             }
             catch
             {
@@ -1410,7 +1465,7 @@ namespace LiteUa.Transport
                 return new TResponse();
             }
 
-            // 7. Await the response from the ProcessResponsesAsync loop
+            // 7. Await the response
             try
             {
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _channelCts!.Token);
@@ -1461,7 +1516,6 @@ namespace LiteUa.Transport
             }
             finally
             {
-                // Always ensure handle is removed to prevent memory leaks
                 if (handle != 0) _pendingRequests.TryRemove(handle, out _);
             }
         }
@@ -1612,7 +1666,7 @@ namespace LiteUa.Transport
         protected virtual async Task<Stream> CreateStreamAsync(string host, int port, CancellationToken ct)
         {
             var cancellationCompletionSource = new TaskCompletionSource<bool>();
-            using (var cts = new CancellationTokenSource((int)_heartbeatTimeoutHintMs))
+            using (var cts = new CancellationTokenSource((int)2000))
             {
                 _client = new TcpClient
                 {

@@ -94,7 +94,17 @@ namespace LiteUa.ConsoleApp
                     s.ClientCertificate = CertificateFactory.CreateSelfSignedCertificate("LiteUa Client", "urn:LiteUa:client");
                 })
                 .WithSession(s => { s.ApplicationName = "LiteUa Console App"; })
-                .WithPool(p => { p.MaxSize = 2; });
+                .WithPool(p => { p.MaxSize = 2; })
+                .WithTransportLimits(t =>
+                {
+                    t.SupervisorIntervalMs = 1000;
+                    t.HeartbeatIntervalMs = 1000;
+                    t.HeartbeatTimeoutHintMs = 2000;
+                    t.MinPublishTimeoutMs = 400;
+                    t.PublishTimeoutMultiplier = 0;
+                    t.ReconnectIntervalMs = 1000;
+                    t.MaxPublishRequestCount = 3;
+                });
 
             var client = builder.Build();
             Console.WriteLine("Connecting...");

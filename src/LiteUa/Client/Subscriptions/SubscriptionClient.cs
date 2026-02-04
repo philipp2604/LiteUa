@@ -205,6 +205,7 @@ namespace LiteUa.Client.Subscriptions
                         await ConnectAndRestoreAsync();
                         lock (_reconnectLock) { _isConnected = true; _isReconnecting = false; }
                         _firstConnectionTcs.TrySetResult();
+                         
                         ConnectionStatusChanged?.Invoke(true);
                     }
                     catch
@@ -221,31 +222,35 @@ namespace LiteUa.Client.Subscriptions
 
         private async Task ConnectAndRestoreAsync()
         {
-            // close old channel
             if (_channel != null)
             {
-                _channel.ConnectionLost -= (ex) => TriggerReconnect();
-                var oldChannel = _channel;
-                _ = Task.Run(() => oldChannel.DisposeAsync());
-                _channel = null;
+                var deadChannel = _channel;
+                _channel = null; // Detach immediately
+
+                deadChannel.ConnectionLost -= (ex) => TriggerReconnect();
+
+                // Fire-and-forget disposal. Do not await.
+                // We just want to close the socket to free ports, we don't care about UA protocol niceties now.
+                _ = Task.Run(() => deadChannel.Dispose());
             }
 
             // create new channel
             _channel = _clientChannelFactory.CreateTcpClientChannel(_endpointUrl, _applicationUri, _productUri, _applicationName, _securityPolicyFactory, _securityMode, _clientCert, _serverCert, _heartbeatIntervalMs, _heartbeatTimeoutHintMs);
             _channel.ConnectionLost += (ex) => TriggerReconnect();
+
+            using var connectCts = new CancellationTokenSource((int)_heartbeatTimeoutHintMs);
+
             await _channel.ConnectAsync();
-            await _channel.CreateSessionAsync("SubscriptionMonitoringSession_" + Guid.NewGuid().ToString().Substring(0, 8));
+            await _channel.CreateSessionAsync(string.Concat("SubscriptionMonitoringSession_", Guid.NewGuid().ToString().AsSpan(0, 8)));
             await _channel.ActivateSessionAsync(_userIdentity);
 
             // 3. Restore
-            var restoreTasks = _buckets.Values.Select(async bucket =>
-            {
-                bucket.ClearLiveReference();
+            foreach (var b in _buckets.Values) b.ClearLiveReference();
+
+            await Task.WhenAll(_buckets.Values.Select(async bucket => {
                 await bucket.EnsureSubscriptionCreatedAsync(_channel, OnDataChanged, OnSubscriptionError);
                 await bucket.RestoreItemsAsync();
-            });
-
-            await Task.WhenAll(restoreTasks);
+            }));
         }
 
         public async ValueTask DisposeAsync()

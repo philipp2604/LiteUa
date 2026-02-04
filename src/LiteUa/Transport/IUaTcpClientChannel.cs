@@ -44,6 +44,11 @@ namespace LiteUa.Transport
         public event Action<Exception>? ConnectionLost;
 
         /// <summary>
+        /// Gets a value indicating whether the channel is currently connected to the server.
+        /// </summary>
+        public bool IsConnected { get; }
+
+        /// <summary>
         /// Resolves an array of relative paths to their corresponding NodeIds starting from a specified start node.
         /// </summary>
         /// <param name="startNode">The starting node.</param>

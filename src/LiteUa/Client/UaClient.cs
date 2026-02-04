@@ -146,6 +146,10 @@ namespace LiteUa.Client
             _subscriptionClient.DataChanged += OnSubscriptionDataChanged;
             _subscriptionClient.ConnectionStatusChanged += (connected) =>
             {
+                if (!connected)
+                {
+                    _pool?.Clear();
+                }
                 ConnectionStatusChanged?.Invoke(connected);
             };
             _subscriptionClient.Start();
@@ -166,6 +170,7 @@ namespace LiteUa.Client
                 _options.Limits.HeartbeatTimeoutHintMs,
                 _tcpClientChannelFactory
             );
+
         }
 
         #region Read / Write / Browse (via Pool)
